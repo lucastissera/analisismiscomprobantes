@@ -9,6 +9,7 @@ Uso:
 """
 
 import sys
+import csv
 from pathlib import Path
 import pandas as pd
 
@@ -49,13 +50,49 @@ def limpiar_argumento_ruta(valor: str) -> str:
 def leer_tabla(entrada, hoja: str | int = 0, nombre_archivo: str | None = None) -> pd.DataFrame:
     """
     Lee un .xlsx o .csv con formato:
-    - fila 1: encabezado general
-    - fila 2: encabezados de columnas
-    - fila 3+: datos
+    - .xlsx: fila 1 encabezado general, fila 2 encabezados de columnas, fila 3+ datos
+    - .csv: fila 1 encabezados de columnas, fila 2+ datos
     """
     nombre = (nombre_archivo or str(entrada)).lower()
     if nombre.endswith(".csv"):
-        df = pd.read_csv(entrada, header=1, sep=None, engine="python")
+        # Para CSV: encabezados en fila 1. Se intenta detectar delimitador.
+        # Si hay filas malformadas, se reintenta omitiéndolas.
+        try:
+            df = pd.read_csv(
+                entrada,
+                header=0,
+                sep=None,
+                engine="python",
+                skipinitialspace=True,
+            )
+        except pd.errors.ParserError:
+            # Reintento robusto: detectar delimitador probable y omitir filas inválidas
+            delimitador = ","
+            pos_actual = None
+            try:
+                if hasattr(entrada, "tell"):
+                    pos_actual = entrada.tell()
+                if hasattr(entrada, "seek"):
+                    entrada.seek(0)
+                primera_linea = entrada.readline()
+                if isinstance(primera_linea, bytes):
+                    primera_linea = primera_linea.decode("utf-8", errors="ignore")
+                dialecto = csv.Sniffer().sniff(primera_linea, delimiters=";,|\t,")
+                delimitador = dialecto.delimiter
+            except Exception:
+                delimitador = ","
+            finally:
+                if hasattr(entrada, "seek"):
+                    entrada.seek(0 if pos_actual is None else pos_actual)
+
+            df = pd.read_csv(
+                entrada,
+                header=0,
+                sep=delimitador,
+                engine="python",
+                skipinitialspace=True,
+                on_bad_lines="skip",
+            )
     else:
         df = pd.read_excel(entrada, sheet_name=hoja, header=1)
 
