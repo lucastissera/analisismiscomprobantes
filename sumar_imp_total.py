@@ -41,10 +41,48 @@ CODIGOS_NOTA_CREDITO = {
     110, 112, 113, 114, 203, 206, 208, 211, 213,
 }
 
+# Alias de columnas para soportar variaciones entre .xlsx y .csv (ARCA)
+ALIAS_COLUMNAS = {
+    "Tipo": ["Tipo", "Tipo de Comprobante"],
+    "Tipo Cambio": ["Tipo Cambio"],
+    "Neto Grav. IVA 0%": ["Neto Grav. IVA 0%", "Imp. Neto Gravado IVA 0%"],
+    "IVA 2,5%": ["IVA 2,5%"],
+    "Neto Grav. IVA 2,5%": ["Neto Grav. IVA 2,5%", "Imp. Neto Gravado IVA 2,5%"],
+    "IVA 5%": ["IVA 5%"],
+    "Neto Grav. IVA 5%": ["Neto Grav. IVA 5%", "Imp. Neto Gravado IVA 5%"],
+    "IVA 10,5%": ["IVA 10,5%"],
+    "Neto Grav. IVA 10,5%": ["Neto Grav. IVA 10,5%", "Imp. Neto Gravado IVA 10,5%"],
+    "IVA 21%": ["IVA 21%"],
+    "Neto Grav. IVA 21%": ["Neto Grav. IVA 21%", "Imp. Neto Gravado IVA 21%"],
+    "IVA 27%": ["IVA 27%"],
+    "Neto Grav. IVA 27%": ["Neto Grav. IVA 27%", "Imp. Neto Gravado IVA 27%"],
+    "Neto Gravado Total": ["Neto Gravado Total", "Imp. Neto Gravado Total"],
+    "Neto No Gravado": ["Neto No Gravado", "Imp. Neto No Gravado"],
+    "Op. Exentas": ["Op. Exentas", "Imp. Op. Exentas"],
+    "Otros Tributos": ["Otros Tributos"],
+    "Total IVA": ["Total IVA"],
+    "Imp. Total": ["Imp. Total"],
+}
+
 
 def limpiar_argumento_ruta(valor: str) -> str:
     """Normaliza saltos de línea/tabulaciones accidentales en argumentos de ruta."""
     return valor.replace("\r", " ").replace("\n", " ").replace("\t", " ").strip()
+
+
+def normalizar_columnas(df: pd.DataFrame) -> pd.DataFrame:
+    """Renombra columnas conocidas a un nombre canónico interno."""
+    df = df.copy()
+    renombres = {}
+    columnas_actuales = list(df.columns)
+    for canonica, aliases in ALIAS_COLUMNAS.items():
+        for alias in aliases:
+            if alias in columnas_actuales:
+                renombres[alias] = canonica
+                break
+    if renombres:
+        df = df.rename(columns=renombres)
+    return df
 
 
 def leer_tabla(entrada, hoja: str | int = 0, nombre_archivo: str | None = None) -> pd.DataFrame:
@@ -114,6 +152,7 @@ def leer_tabla(entrada, hoja: str | int = 0, nombre_archivo: str | None = None) 
                         continue
 
                     candidato.columns = candidato.columns.astype(str).str.strip()
+                    candidato = normalizar_columnas(candidato)
                     if primer_df is None:
                         primer_df = candidato
                     if columnas_requeridas.issubset(set(candidato.columns)):
@@ -134,7 +173,7 @@ def leer_tabla(entrada, hoja: str | int = 0, nombre_archivo: str | None = None) 
         df = pd.read_excel(entrada, sheet_name=hoja, header=1)
 
     df.columns = df.columns.astype(str).str.strip()
-    return df
+    return normalizar_columnas(df)
 
 
 def procesar_archivo(
