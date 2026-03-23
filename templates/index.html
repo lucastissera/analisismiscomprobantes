@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Procesar Excel</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 2rem;
+      }
+      .card {
+        max-width: 520px;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        padding: 1rem;
+      }
+      .error {
+        color: #b00020;
+        margin-bottom: 0.75rem;
+      }
+      button {
+        margin-top: 0.75rem;
+        padding: 0.6rem 0.9rem;
+        border: 1px solid #333;
+        background: #111;
+        color: white;
+        border-radius: 6px;
+        cursor: pointer;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1>Procesador de Comprobantes</h1>
+      <p>Selecciona un archivo .xlsx o .csv para procesarlo y descargarlo ajustado.</p>
+
+      {% if error %}
+      <div class="error">{{ error }}</div>
+      {% endif %}
+
+      <form method="post" action="/procesar" enctype="multipart/form-data">
+        <label for="excel">Archivo Excel</label><br />
+        <input id="excel" name="excel" type="file" accept=".xlsx,.csv" required />
+        <br />
+        <button type="submit">Subir excel</button>
+      </form>
+
+      {% if totales %}
+      <hr />
+      <h2>Resumen de sumas</h2>
+      <table>
+        <tbody>
+          {% for columna, total in totales.items() %}
+          <tr>
+            <td style="padding-right: 12px">{{ columna }}</td>
+            <td>{{ "{:,.2f}".format(total) }}</td>
+          </tr>
+          {% endfor %}
+          <tr>
+            <td style="padding-top: 8px"><strong>Suma total</strong></td>
+            <td style="padding-top: 8px"><strong>{{ "{:,.2f}".format(suma_total) }}</strong></td>
+          </tr>
+        </tbody>
+      </table>
+
+      {% if download_id %}
+      <p style="margin-top: 12px;">
+        <a href="/descargar/{{ download_id }}">Descargar archivo ajustado ({{ nombre_salida }})</a>
+      </p>
+      {% endif %}
+      {% endif %}
+    </div>
+  </body>
+</html>
