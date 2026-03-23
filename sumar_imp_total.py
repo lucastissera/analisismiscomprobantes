@@ -56,10 +56,11 @@ def leer_tabla(entrada, hoja: str | int = 0, nombre_archivo: str | None = None) 
     nombre = (nombre_archivo or str(entrada)).lower()
     if nombre.endswith(".csv"):
         # CSV: encabezados en fila 1 (excepto archivos con primera línea "sep=;")
-        # Detectar delimitador y encabezado de forma robusta.
-        delimitador = ","
-        skiprows = 0
+        # Se prueban varias combinaciones y se elige la que contiene columnas requeridas.
+        columnas_requeridas = set(COLUMNAS_A_AJUSTAR + ["Tipo", "Tipo Cambio"])
         muestra = ""
+        delimitadores = [";", ",", "\t", "|"]
+        skiprows_opciones = [0]
 
         try:
             if hasattr(entrada, "seek"):
@@ -75,40 +76,60 @@ def leer_tabla(entrada, hoja: str | int = 0, nombre_archivo: str | None = None) 
         lineas = [ln.strip() for ln in muestra.splitlines() if ln.strip()]
         primera = lineas[0] if lineas else ""
         if primera.lower().startswith("sep="):
-            skiprows = 1
             sep_decl = primera.split("=", 1)[1].strip()
             if sep_decl:
-                delimitador = sep_decl[0]
+                delim_decl = sep_decl[0]
+                delimitadores = [delim_decl] + [d for d in delimitadores if d != delim_decl]
+            skiprows_opciones = [1, 0]
         else:
             try:
                 dialecto = csv.Sniffer().sniff(muestra or "", delimiters=";,|\t,")
-                delimitador = dialecto.delimiter
+                delim_sniff = dialecto.delimiter
+                delimitadores = [delim_sniff] + [d for d in delimitadores if d != delim_sniff]
             except Exception:
-                delimitador = ","
+                pass
 
-        try:
-            df = pd.read_csv(
-                entrada,
-                header=0,
-                skiprows=skiprows,
-                sep=delimitador,
-                engine="python",
-                skipinitialspace=True,
-                encoding="utf-8-sig",
-            )
-        except pd.errors.ParserError:
-            if hasattr(entrada, "seek"):
-                entrada.seek(0)
-            df = pd.read_csv(
-                entrada,
-                header=0,
-                skiprows=skiprows,
-                sep=delimitador,
-                engine="python",
-                skipinitialspace=True,
-                encoding="utf-8-sig",
-                on_bad_lines="skip",
-            )
+        primer_df = None
+        df = None
+        for skiprows in skiprows_opciones:
+            for delimitador in delimitadores:
+                for on_bad_lines in (None, "skip"):
+                    if hasattr(entrada, "seek"):
+                        entrada.seek(0)
+                    kwargs = {
+                        "header": 0,
+                        "skiprows": skiprows,
+                        "sep": delimitador,
+                        "engine": "python",
+                        "skipinitialspace": True,
+                        "encoding": "utf-8-sig",
+                    }
+                    if on_bad_lines is not None:
+                        kwargs["on_bad_lines"] = on_bad_lines
+                    try:
+                        candidato = pd.read_csv(entrada, **kwargs)
+                    except pd.errors.ParserError:
+                        continue
+                    except Exception:
+                        continue
+
+                    candidato.columns = candidato.columns.astype(str).str.strip()
+                    if primer_df is None:
+                        primer_df = candidato
+                    if columnas_requeridas.issubset(set(candidato.columns)):
+                        df = candidato
+                        break
+                if df is not None:
+                    break
+            if df is not None:
+                break
+
+        if df is None:
+            # Fallback: primera lectura exitosa aunque no tenga todas las columnas.
+            if primer_df is not None:
+                df = primer_df
+            else:
+                raise ValueError("No se pudo leer el CSV con un formato válido.")
     else:
         df = pd.read_excel(entrada, sheet_name=hoja, header=1)
 
