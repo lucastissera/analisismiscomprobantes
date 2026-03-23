@@ -55,39 +55,58 @@ def leer_tabla(entrada, hoja: str | int = 0, nombre_archivo: str | None = None) 
     """
     nombre = (nombre_archivo or str(entrada)).lower()
     if nombre.endswith(".csv"):
-        # Para CSV: encabezados en fila 1. Se intenta detectar delimitador.
-        # Si hay filas malformadas, se reintenta omitiéndolas.
+        # CSV: encabezados en fila 1 (excepto archivos con primera línea "sep=;")
+        # Detectar delimitador y encabezado de forma robusta.
+        delimitador = ","
+        skiprows = 0
+        muestra = ""
+
+        try:
+            if hasattr(entrada, "seek"):
+                entrada.seek(0)
+            if hasattr(entrada, "read"):
+                muestra = entrada.read(8192)
+                if isinstance(muestra, bytes):
+                    muestra = muestra.decode("utf-8", errors="ignore")
+        finally:
+            if hasattr(entrada, "seek"):
+                entrada.seek(0)
+
+        lineas = [ln.strip() for ln in muestra.splitlines() if ln.strip()]
+        primera = lineas[0] if lineas else ""
+        if primera.lower().startswith("sep="):
+            skiprows = 1
+            sep_decl = primera.split("=", 1)[1].strip()
+            if sep_decl:
+                delimitador = sep_decl[0]
+        else:
+            try:
+                dialecto = csv.Sniffer().sniff(muestra or "", delimiters=";,|\t,")
+                delimitador = dialecto.delimiter
+            except Exception:
+                delimitador = ","
+
         try:
             df = pd.read_csv(
                 entrada,
                 header=0,
-                sep=None,
-                engine="python",
-                skipinitialspace=True,
-            )
-        except pd.errors.ParserError:
-            # Reintento robusto: detectar delimitador probable y omitir filas inválidas
-            delimitador = ","
-            try:
-                if hasattr(entrada, "seek"):
-                    entrada.seek(0)
-                primera_linea = entrada.readline()
-                if isinstance(primera_linea, bytes):
-                    primera_linea = primera_linea.decode("utf-8", errors="ignore")
-                dialecto = csv.Sniffer().sniff(primera_linea, delimiters=";,|\t,")
-                delimitador = dialecto.delimiter
-            except Exception:
-                delimitador = ","
-            finally:
-                if hasattr(entrada, "seek"):
-                    entrada.seek(0)
-
-            df = pd.read_csv(
-                entrada,
-                header=0,
+                skiprows=skiprows,
                 sep=delimitador,
                 engine="python",
                 skipinitialspace=True,
+                encoding="utf-8-sig",
+            )
+        except pd.errors.ParserError:
+            if hasattr(entrada, "seek"):
+                entrada.seek(0)
+            df = pd.read_csv(
+                entrada,
+                header=0,
+                skiprows=skiprows,
+                sep=delimitador,
+                engine="python",
+                skipinitialspace=True,
+                encoding="utf-8-sig",
                 on_bad_lines="skip",
             )
     else:
