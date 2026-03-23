@@ -68,10 +68,7 @@ def leer_tabla(entrada, hoja: str | int = 0, nombre_archivo: str | None = None) 
         except pd.errors.ParserError:
             # Reintento robusto: detectar delimitador probable y omitir filas inválidas
             delimitador = ","
-            pos_actual = None
             try:
-                if hasattr(entrada, "tell"):
-                    pos_actual = entrada.tell()
                 if hasattr(entrada, "seek"):
                     entrada.seek(0)
                 primera_linea = entrada.readline()
@@ -83,7 +80,7 @@ def leer_tabla(entrada, hoja: str | int = 0, nombre_archivo: str | None = None) 
                 delimitador = ","
             finally:
                 if hasattr(entrada, "seek"):
-                    entrada.seek(0 if pos_actual is None else pos_actual)
+                    entrada.seek(0)
 
             df = pd.read_csv(
                 entrada,
@@ -137,14 +134,15 @@ def procesar_archivo(
     es_nota_credito = codigo_num.isin(CODIGOS_NOTA_CREDITO)
     signo = 1 - 2 * es_nota_credito.astype(int)  # True -> -1, False -> 1
 
-    # Factor de conversión por fila
-    tipo_cambio = pd.to_numeric(df["Tipo Cambio"], errors="coerce")
+    # Factor de conversión por fila: vacíos/no numéricos se toman como 0 solo para cálculo
+    tipo_cambio = pd.to_numeric(df["Tipo Cambio"], errors="coerce").fillna(0)
 
     # Ajustar signos y tipo de cambio en el DataFrame de salida, luego acumular totales
     df_ajustado = df.copy()
     resultado = {}
     for col in COLUMNAS_A_AJUSTAR:
-        valores = pd.to_numeric(df[col], errors="coerce")
+        # En cálculo, vacíos/no numéricos se toman como 0 sin alterar columnas originales
+        valores = pd.to_numeric(df[col], errors="coerce").fillna(0)
         valores_ajustados = valores * signo * tipo_cambio
         df_ajustado[col] = valores_ajustados
         resultado[col] = float(valores_ajustados.sum())
