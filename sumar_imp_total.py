@@ -237,6 +237,56 @@ def _columnas_requeridas_lectura() -> set[str]:
     return set(COLUMNAS_A_AJUSTAR + ["Tipo", "Tipo Cambio", "Fecha Emisión"])
 
 
+def _mes_fila_fecha_emision(
+    df: pd.DataFrame, nombre_archivo: str | None
+) -> pd.Series:
+    """
+    Mes calendario (1-12) por fila según Fecha Emisión.
+    Para .xlsx se mantiene la lógica actual. Para .csv se parsea de forma más robusta
+    (texto dd/mm/aaaa, etc.) para que el resumen mensual sume las mismas filas que el total anual.
+    """
+    serie = df["Fecha Emisión"]
+    es_csv = str(nombre_archivo or "").lower().endswith(".csv")
+
+    if not es_csv:
+        try:
+            fechas = pd.to_datetime(
+                serie, dayfirst=True, errors="coerce", format="mixed"
+            )
+        except (TypeError, ValueError):
+            fechas = pd.to_datetime(serie, dayfirst=True, errors="coerce")
+        return fechas.dt.month.reset_index(drop=True)
+
+    # --- Solo CSV: evitar NaT en fechas texto que sí suman en el total anual ---
+    if pd.api.types.is_datetime64_any_dtype(serie):
+        fechas = pd.to_datetime(serie, errors="coerce")
+    else:
+        s = serie.astype(str).str.strip()
+        s = s.replace(
+            {"nan": pd.NA, "None": pd.NA, "<NA>": pd.NA, "NaT": pd.NA}
+        )
+        # Quitar hora si viene pegada (ej. "3/1/2025 12:00:00")
+        s = s.str.replace(r"\s+\d{1,2}:\d{2}.*$", "", regex=True)
+        fechas = pd.to_datetime(s, dayfirst=True, errors="coerce")
+        pend = fechas.isna() & s.notna()
+        if pend.any():
+            fechas.loc[pend] = pd.to_datetime(
+                s.loc[pend], format="%d/%m/%Y", errors="coerce"
+            )
+        pend = fechas.isna() & s.notna()
+        if pend.any():
+            fechas.loc[pend] = pd.to_datetime(
+                s.loc[pend], format="%d-%m-%Y", errors="coerce"
+            )
+        pend = fechas.isna() & s.notna()
+        if pend.any():
+            fechas.loc[pend] = pd.to_datetime(
+                s.loc[pend], format="%Y-%m-%d", errors="coerce"
+            )
+
+    return fechas.dt.month.reset_index(drop=True)
+
+
 def _mejor_dataframe_excel(entrada, hoja: str | int) -> pd.DataFrame:
     """
     Prueba header=0 y header=1 en .xlsx y elige el que tenga todas las columnas requeridas.
@@ -413,13 +463,7 @@ def procesar_archivo(
         drop=True
     )
 
-    try:
-        fechas = pd.to_datetime(
-            df["Fecha Emisión"], dayfirst=True, errors="coerce", format="mixed"
-        )
-    except (TypeError, ValueError):
-        fechas = pd.to_datetime(df["Fecha Emisión"], dayfirst=True, errors="coerce")
-    mes_fila = fechas.dt.month.reset_index(drop=True)
+    mes_fila = _mes_fila_fecha_emision(df, nombre_archivo)
 
     # Ajustar signos y tipo de cambio en el DataFrame de salida, luego acumular totales
     df_ajustado = df.copy()
