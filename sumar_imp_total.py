@@ -1,7 +1,7 @@
 """
 Lee un archivo Excel (.xlsx) o CSV, ajusta signos según Tipo y suma columnas indicadas.
-Estructura del archivo: fila 1 = encabezado general, fila 2 = encabezados de columnas,
-datos desde la fila 3.
+En .xlsx se prueba encabezado en fila 1 o fila 2 y se usa el que tenga todas las columnas requeridas.
+En .csv los encabezados suelen estar en fila 1.
 Las filas con Tipo = nota de crédito (por código numérico) se consideran en negativo.
 
 Uso:
@@ -76,9 +76,23 @@ NOMBRES_MESES = [
     "diciembre",
 ]
 
+def limpiar_nombre_columna_bruto(nombre: str) -> str:
+    """Corrige nombres de columna típicos (mojibake UTF-8 como latin-1, etc.)."""
+    s = str(nombre).strip()
+    s = s.replace("EmisiÃ³n", "Emisión")
+    s = s.replace("Ã³", "ó").replace("Ã­", "í").replace("Ã¡", "á").replace("Ã©", "é")
+    s = s.replace("Ãº", "ú").replace("Ã±", "ñ")
+    return s
+
+
 # Alias de columnas para soportar variaciones entre .xlsx y .csv (ARCA)
 ALIAS_COLUMNAS = {
-    "Fecha Emisión": ["Fecha Emisión", "Fecha de Emisión"],
+    "Fecha Emisión": [
+        "Fecha Emisión",
+        "Fecha de Emisión",
+        "Fecha de emisión",
+        "Fecha",
+    ],
     "Tipo": ["Tipo", "Tipo de Comprobante"],
     "Tipo Cambio": ["Tipo Cambio"],
     "Neto Grav. IVA 0%": ["Neto Grav. IVA 0%", "Imp. Neto Gravado IVA 0%"],
@@ -203,6 +217,7 @@ def limpiar_argumento_ruta(valor: str) -> str:
 def normalizar_columnas(df: pd.DataFrame) -> pd.DataFrame:
     """Renombra columnas conocidas a un nombre canónico interno."""
     df = df.copy()
+    df.columns = [limpiar_nombre_columna_bruto(c) for c in df.columns]
     renombres = {}
     columnas_actuales = list(df.columns)
     for canonica, aliases in ALIAS_COLUMNAS.items():
@@ -218,6 +233,45 @@ def normalizar_columnas(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def _columnas_requeridas_lectura() -> set[str]:
+    return set(COLUMNAS_A_AJUSTAR + ["Tipo", "Tipo Cambio", "Fecha Emisión"])
+
+
+def _mejor_dataframe_excel(entrada, hoja: str | int) -> pd.DataFrame:
+    """
+    Prueba header=0 y header=1 en .xlsx y elige el que tenga todas las columnas requeridas.
+    Si ninguno las tiene todas, elige el que menos falte (misma lógica que CSV vs xlsx).
+    """
+    req = _columnas_requeridas_lectura()
+    opciones: list[tuple[int, int, pd.DataFrame]] = []
+
+    for header_row in (0, 1):
+        if hasattr(entrada, "seek"):
+            entrada.seek(0)
+        try:
+            raw = pd.read_excel(entrada, sheet_name=hoja, header=header_row)
+        except Exception:
+            continue
+        raw.columns = raw.columns.astype(str).str.strip()
+        cand = normalizar_columnas(raw)
+        faltan = len(req - set(cand.columns))
+        opciones.append((faltan, header_row, cand))
+
+    if not opciones:
+        raise ValueError("No se pudo leer el archivo Excel.")
+
+    opciones.sort(key=lambda t: (t[0], t[1]))
+    mejor_faltan, _hdr, mejor_df = opciones[0]
+    if mejor_faltan > 0:
+        nombres = ", ".join(mejor_df.columns.astype(str))
+        faltantes = list(req - set(mejor_df.columns))
+        raise ValueError(
+            f"No se encontraron las columnas: {faltantes}. "
+            f"Columnas en el archivo: {nombres}"
+        )
+    return mejor_df
+
+
 def leer_tabla(entrada, hoja: str | int = 0, nombre_archivo: str | None = None) -> pd.DataFrame:
     """
     Lee un .xlsx o .csv con formato:
@@ -228,9 +282,7 @@ def leer_tabla(entrada, hoja: str | int = 0, nombre_archivo: str | None = None) 
     if nombre.endswith(".csv"):
         # CSV: encabezados en fila 1 (excepto archivos con primera línea "sep=;")
         # Se prueban varias combinaciones y se elige la que contiene columnas requeridas.
-        columnas_requeridas = set(
-            COLUMNAS_A_AJUSTAR + ["Tipo", "Tipo Cambio", "Fecha Emisión"]
-        )
+        columnas_requeridas = _columnas_requeridas_lectura()
         muestra = ""
         delimitadores = [";", ",", "\t", "|"]
         skiprows_opciones = [0]
@@ -305,7 +357,7 @@ def leer_tabla(entrada, hoja: str | int = 0, nombre_archivo: str | None = None) 
             else:
                 raise ValueError("No se pudo leer el CSV con un formato válido.")
     else:
-        df = pd.read_excel(entrada, sheet_name=hoja, header=1)
+        df = _mejor_dataframe_excel(entrada, hoja)
 
     df.columns = df.columns.astype(str).str.strip()
     return normalizar_columnas(df)
@@ -372,10 +424,6 @@ def procesar_archivo(
     # Ajustar signos y tipo de cambio en el DataFrame de salida, luego acumular totales
     df_ajustado = df.copy()
     resultado: dict[str, float] = {}
-    matriz_ajustada = pd.DataFrame(
-        0.0, index=range(len(df)), columns=COLUMNAS_A_AJUSTAR, dtype=float
-    )
-
     imp_total_num = serie_a_float_importe(df["Imp. Total"]).fillna(0).reset_index(
         drop=True
     )
@@ -390,8 +438,10 @@ def procesar_archivo(
             valores = serie_a_float_importe(df[col]).fillna(0).reset_index(drop=True)
         valores_ajustados = (valores * signo * tipo_cambio).astype(float)
         df_ajustado[col] = valores_ajustados.values
-        matriz_ajustada[col] = valores_ajustados.values
-        resultado[col] = float(valores_ajustados.sum())
+
+    # Totales y por mes desde el mismo DataFrame que se exporta (evita desvíos con el frontend)
+    for col in COLUMNAS_A_AJUSTAR:
+        resultado[col] = float(pd.to_numeric(df_ajustado[col], errors="coerce").fillna(0).sum())
 
     totales_por_mes: dict[int, dict[str, float]] = {
         m: {c: 0.0 for c in COLUMNAS_A_AJUSTAR} for m in range(1, 13)
@@ -404,7 +454,8 @@ def procesar_archivo(
         if mi < 1 or mi > 12:
             continue
         for col in COLUMNAS_A_AJUSTAR:
-            totales_por_mes[mi][col] += float(matriz_ajustada.at[pos, col])
+            celda = pd.to_numeric(df_ajustado[col].iloc[pos], errors="coerce")
+            totales_por_mes[mi][col] += 0.0 if pd.isna(celda) else float(celda)
 
     return df_ajustado, resultado, totales_por_mes
 
