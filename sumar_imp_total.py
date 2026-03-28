@@ -51,8 +51,28 @@ CODIGOS_NOTA_CREDITO = {
     110, 112, 113, 114, 203, 206, 208, 211, 213,
 }
 
+# Comprobantes régimen B / C (código numérico en columna Tipo): Imp. Total pasa a Neto Gravado Total
+CODIGOS_GRUPO_B = {6, 7, 8, 9, 206, 208}
+CODIGOS_GRUPO_C = {11, 12, 13, 211, 213}
+
+NOMBRES_MESES = [
+    "enero",
+    "febrero",
+    "marzo",
+    "abril",
+    "mayo",
+    "junio",
+    "julio",
+    "agosto",
+    "septiembre",
+    "octubre",
+    "noviembre",
+    "diciembre",
+]
+
 # Alias de columnas para soportar variaciones entre .xlsx y .csv (ARCA)
 ALIAS_COLUMNAS = {
+    "Fecha Emisión": ["Fecha Emisión", "Fecha de Emisión"],
     "Tipo": ["Tipo", "Tipo de Comprobante"],
     "Tipo Cambio": ["Tipo Cambio"],
     "Neto Grav. IVA 0%": ["Neto Grav. IVA 0%", "Imp. Neto Gravado IVA 0%"],
@@ -134,6 +154,16 @@ def total_resumen_pantalla(totales: dict[str, float]) -> float:
     return float(sum(totales[c] for c in COLUMNAS_TOTAL_RESUMEN if c in totales))
 
 
+def totales_resumen_por_mes(
+    totales_por_mes: dict[int, dict[str, float]],
+) -> dict[int, float]:
+    """Total (resumen) por mes, misma regla que COLUMNAS_TOTAL_RESUMEN."""
+    return {
+        m: float(sum(totales_por_mes[m][c] for c in COLUMNAS_TOTAL_RESUMEN if c in totales_por_mes[m]))
+        for m in range(1, 13)
+    }
+
+
 def limpiar_argumento_ruta(valor: str) -> str:
     """Normaliza saltos de línea/tabulaciones accidentales en argumentos de ruta."""
     return valor.replace("\r", " ").replace("\n", " ").replace("\t", " ").strip()
@@ -164,7 +194,9 @@ def leer_tabla(entrada, hoja: str | int = 0, nombre_archivo: str | None = None) 
     if nombre.endswith(".csv"):
         # CSV: encabezados en fila 1 (excepto archivos con primera línea "sep=;")
         # Se prueban varias combinaciones y se elige la que contiene columnas requeridas.
-        columnas_requeridas = set(COLUMNAS_A_AJUSTAR + ["Tipo", "Tipo Cambio"])
+        columnas_requeridas = set(
+            COLUMNAS_A_AJUSTAR + ["Tipo", "Tipo Cambio", "Fecha Emisión"]
+        )
         muestra = ""
         delimitadores = [";", ",", "\t", "|"]
         skiprows_opciones = [0]
@@ -247,11 +279,12 @@ def leer_tabla(entrada, hoja: str | int = 0, nombre_archivo: str | None = None) 
 
 def procesar_archivo(
     ruta_excel: str, hoja: str | int = 0, nombre_archivo: str | None = None
-) -> tuple[pd.DataFrame, dict[str, float]]:
+) -> tuple[pd.DataFrame, dict[str, float], dict[int, dict[str, float]]]:
     """
     Lee un archivo Excel y devuelve la sumatoria de las columnas indicadas.
     Fila 1 = encabezado general, fila 2 = encabezados de columnas, datos desde fila 3.
     Las filas con Tipo = nota de crédito se suman en valor negativo.
+    Comprobantes B/C: el importe de Imp. Total se usa como Neto Gravado Total (ajustado luego).
 
     Args:
         ruta_excel: Ruta al archivo .xlsx
@@ -261,12 +294,13 @@ def procesar_archivo(
         Tuple con:
         - DataFrame ajustado (columnas numéricas con signo aplicado según Tipo)
         - Diccionario con el nombre de cada columna y su suma.
+        - Diccionario mes (1-12) -> totales por columna (mismas claves que totales).
     """
     # header=1: la fila 2 del archivo (índice 1) tiene los nombres de columnas; datos desde fila 3
     df = leer_tabla(ruta_excel, hoja=hoja, nombre_archivo=nombre_archivo)
 
     # Comprobar que existan todas las columnas necesarias
-    columnas_requeridas = COLUMNAS_A_AJUSTAR + ["Tipo", "Tipo Cambio"]
+    columnas_requeridas = COLUMNAS_A_AJUSTAR + ["Tipo", "Tipo Cambio", "Fecha Emisión"]
     faltantes = [c for c in columnas_requeridas if c not in df.columns]
     if faltantes:
         nombres = ", ".join(df.columns.astype(str))
@@ -282,20 +316,45 @@ def procesar_archivo(
     es_nota_credito = codigo_num.isin(CODIGOS_NOTA_CREDITO)
     signo = 1 - 2 * es_nota_credito.astype(int)  # True -> -1, False -> 1
 
+    es_grupo_b_o_c = codigo_num.isin(CODIGOS_GRUPO_B | CODIGOS_GRUPO_C)
+
     # Factor de conversión por fila: vacíos/no numéricos se toman como 0 solo para cálculo
     tipo_cambio = serie_a_float_importe(df["Tipo Cambio"]).fillna(0)
 
+    mes_fila = pd.to_datetime(df["Fecha Emisión"], dayfirst=True, errors="coerce").dt.month
+
     # Ajustar signos y tipo de cambio en el DataFrame de salida, luego acumular totales
     df_ajustado = df.copy()
-    resultado = {}
+    resultado: dict[str, float] = {}
+    matriz_ajustada = pd.DataFrame(index=df.index, columns=COLUMNAS_A_AJUSTAR, dtype=float)
+
+    imp_total_num = serie_a_float_importe(df["Imp. Total"]).fillna(0)
+    neto_grav_num = serie_a_float_importe(df["Neto Gravado Total"]).fillna(0)
+
     for col in COLUMNAS_A_AJUSTAR:
-        # En cálculo, vacíos/no numéricos se toman como 0 sin alterar columnas originales
-        valores = serie_a_float_importe(df[col]).fillna(0)
+        if col == "Neto Gravado Total":
+            valores = neto_grav_num.where(~es_grupo_b_o_c, imp_total_num)
+        else:
+            valores = serie_a_float_importe(df[col]).fillna(0)
         valores_ajustados = valores * signo * tipo_cambio
         df_ajustado[col] = valores_ajustados
+        matriz_ajustada[col] = valores_ajustados
         resultado[col] = float(valores_ajustados.sum())
 
-    return df_ajustado, resultado
+    totales_por_mes: dict[int, dict[str, float]] = {
+        m: {c: 0.0 for c in COLUMNAS_A_AJUSTAR} for m in range(1, 13)
+    }
+    for pos in range(len(df)):
+        m = mes_fila.iloc[pos]
+        if pd.isna(m):
+            continue
+        mi = int(m)
+        if mi < 1 or mi > 12:
+            continue
+        for col in COLUMNAS_A_AJUSTAR:
+            totales_por_mes[mi][col] += float(matriz_ajustada.iloc[pos][col])
+
+    return df_ajustado, resultado, totales_por_mes
 
 
 def construir_ruta_salida(ruta_excel: str, salida_arg: str | None) -> Path:
@@ -322,7 +381,7 @@ def main():
         hoja = int(hoja)
 
     try:
-        df_ajustado, totales = procesar_archivo(ruta, hoja, nombre_archivo=ruta)
+        df_ajustado, totales, _ = procesar_archivo(ruta, hoja, nombre_archivo=ruta)
         ruta_salida = construir_ruta_salida(ruta, salida_arg)
         df_ajustado.to_excel(ruta_salida, index=False)
 
