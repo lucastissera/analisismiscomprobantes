@@ -1,5 +1,5 @@
 """
-Lee un archivo Excel (.xlsx), ajusta signos según Tipo y suma columnas indicadas.
+Lee un archivo Excel (.xlsx) o CSV, ajusta signos según Tipo y suma columnas indicadas.
 Estructura del archivo: fila 1 = encabezado general, fila 2 = encabezados de columnas,
 datos desde la fila 3.
 Las filas con Tipo = nota de crédito (por código numérico) se consideran en negativo.
@@ -8,6 +8,7 @@ Uso:
   python sumar_imp_total.py <ruta_al_archivo.xlsx> [hoja] [archivo_salida.xlsx]
 """
 
+import re
 import sys
 import csv
 from pathlib import Path
@@ -32,6 +33,15 @@ COLUMNAS_A_AJUSTAR = [
     "Otros Tributos",
     "Total IVA",
     "Imp. Total",
+]
+
+# Totales que se suman en la línea "Total" del resumen en pantalla (no IVA desglosado ni Imp. Total)
+COLUMNAS_TOTAL_RESUMEN = [
+    "Neto Gravado Total",
+    "Neto No Gravado",
+    "Op. Exentas",
+    "Otros Tributos",
+    "Total IVA",
 ]
 
 # Códigos numéricos de la columna "Tipo" que se consideran nota de crédito (suma en negativo)
@@ -63,6 +73,65 @@ ALIAS_COLUMNAS = {
     "Total IVA": ["Total IVA"],
     "Imp. Total": ["Imp. Total"],
 }
+
+
+def parsear_numero_importe(val) -> float:
+    """
+    Convierte valores típicos de exportación ARCA/CSV argentino a float.
+    Soporta coma decimal (10156,44), notación científica con coma (7,50154E+13)
+    y separador de miles con punto (1.234,56).
+    """
+    if pd.isna(val):
+        return float("nan")
+    if isinstance(val, bool):
+        return float("nan")
+    if isinstance(val, (int, float)):
+        return float(val)
+
+    s = str(val).strip()
+    if not s or s in ("-", "–", "$"):
+        return float("nan")
+
+    # Notación científica con coma en la mantisa: 7,50154E+13
+    if re.search(r"[Ee]", s):
+        s = re.sub(
+            r"^([-+]?\d+),(\d+[Ee][+-]?\d+)$",
+            r"\1.\2",
+            s,
+            flags=re.IGNORECASE,
+        )
+        try:
+            return float(s)
+        except ValueError:
+            return float("nan")
+
+    s_clean = s.replace(" ", "")
+    n_comma = s_clean.count(",")
+    n_dot = s_clean.count(".")
+
+    if n_comma == 1 and n_dot == 0:
+        s_clean = s_clean.replace(",", ".")
+    elif n_comma > 0 and n_dot > 0:
+        if s_clean.rfind(",") > s_clean.rfind("."):
+            s_clean = s_clean.replace(".", "").replace(",", ".")
+        else:
+            s_clean = s_clean.replace(",", "")
+    elif n_comma > 1 and n_dot == 0:
+        s_clean = s_clean.replace(",", ".", 1).replace(",", "", n_comma - 1)
+
+    try:
+        return float(s_clean)
+    except ValueError:
+        return float("nan")
+
+
+def serie_a_float_importe(serie: pd.Series) -> pd.Series:
+    return serie.map(parsear_numero_importe)
+
+
+def total_resumen_pantalla(totales: dict[str, float]) -> float:
+    """Suma solo las columnas que deben aparecer en el total del resumen UI."""
+    return float(sum(totales[c] for c in COLUMNAS_TOTAL_RESUMEN if c in totales))
 
 
 def limpiar_argumento_ruta(valor: str) -> str:
@@ -214,14 +283,14 @@ def procesar_archivo(
     signo = 1 - 2 * es_nota_credito.astype(int)  # True -> -1, False -> 1
 
     # Factor de conversión por fila: vacíos/no numéricos se toman como 0 solo para cálculo
-    tipo_cambio = pd.to_numeric(df["Tipo Cambio"], errors="coerce").fillna(0)
+    tipo_cambio = serie_a_float_importe(df["Tipo Cambio"]).fillna(0)
 
     # Ajustar signos y tipo de cambio en el DataFrame de salida, luego acumular totales
     df_ajustado = df.copy()
     resultado = {}
     for col in COLUMNAS_A_AJUSTAR:
         # En cálculo, vacíos/no numéricos se toman como 0 sin alterar columnas originales
-        valores = pd.to_numeric(df[col], errors="coerce").fillna(0)
+        valores = serie_a_float_importe(df[col]).fillna(0)
         valores_ajustados = valores * signo * tipo_cambio
         df_ajustado[col] = valores_ajustados
         resultado[col] = float(valores_ajustados.sum())
@@ -261,7 +330,7 @@ def main():
         for col, total in totales.items():
             print(f"  {col}: {total:,.2f}")
         print("  ---")
-        print(f"  Suma total: {sum(totales.values()):,.2f}")
+        print(f"  Suma total (resumen): {total_resumen_pantalla(totales):,.2f}")
         print(f"Excel ajustado generado en: {ruta_salida}")
     except FileNotFoundError:
         print(f"Error: No se encontró el archivo '{ruta}'", file=sys.stderr)

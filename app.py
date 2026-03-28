@@ -5,7 +5,7 @@ from uuid import uuid4
 
 from flask import Flask, render_template, request, send_file
 
-from sumar_imp_total import procesar_archivo
+from sumar_imp_total import procesar_archivo, total_resumen_pantalla
 
 
 app = Flask(__name__)
@@ -62,7 +62,7 @@ def procesar():
     return render_template(
         "index.html",
         totales=totales,
-        suma_total=round(sum(totales.values()), 2),
+        suma_total=round(total_resumen_pantalla(totales), 2),
         download_id=download_id,
         nombre_salida=nombre_salida,
     )
