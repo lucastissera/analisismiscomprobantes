@@ -43,6 +43,11 @@
       .tabla-resumen-anual td {
         padding: 4px 8px 4px 0;
       }
+      .subtitulo-detalle {
+        margin-top: 0.75rem;
+        font-size: 0.9rem;
+        color: #444;
+      }
       .tabla-meses-wrap {
         flex: 1 1 480px;
         overflow-x: auto;
@@ -88,14 +93,17 @@
         <button type="submit">Subir excel</button>
       </form>
 
-      {% if totales %}
+      {% if mostrar_resultado %}
       <hr />
       <div class="resumen-filas">
         <div class="tabla-resumen-anual">
-          <h2>Resumen de sumas</h2>
+          <h2>Resumen (base del total)</h2>
+          <p class="subtitulo-detalle">
+            Solo estas filas suman el <strong>Total (resumen)</strong> (sin IVA desglosado ni Imp. Total).
+          </p>
           <table>
             <tbody>
-              {% for columna, total in totales.items() %}
+              {% for columna, total in totales_resumen.items() %}
               <tr>
                 <td style="padding-right: 12px">{{ columna }}</td>
                 <td>{{ "{:,.2f}".format(total) }}</td>
@@ -107,16 +115,30 @@
               </tr>
             </tbody>
           </table>
+
+          {% if totales_detalle %}
+          <h3 class="subtitulo-detalle" style="margin-top: 1rem">Detalle por alícuota (no entra en el total de arriba)</h3>
+          <table>
+            <tbody>
+              {% for columna, total in totales_detalle.items() %}
+              <tr>
+                <td style="padding-right: 12px">{{ columna }}</td>
+                <td>{{ "{:,.2f}".format(total) }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          {% endif %}
         </div>
 
-        {% if totales_por_mes and nombres_meses and columnas_orden %}
         <div class="tabla-meses-wrap">
-          <h2>Por mes (misma base que el resumen)</h2>
+          <h2>Por mes</h2>
+          <p class="subtitulo-detalle">Mismos conceptos que el resumen anual; columna mes según fecha de emisión.</p>
           <table class="tabla-meses">
             <thead>
               <tr>
                 <th>Concepto</th>
-                {% for mes in range(1, 13) %}
+                {% for mes in meses_idx %}
                 <th>{{ nombres_meses[mes - 1] }}</th>
                 {% endfor %}
               </tr>
@@ -125,21 +147,20 @@
               {% for columna in columnas_orden %}
               <tr>
                 <td>{{ columna }}</td>
-                {% for mes in range(1, 13) %}
+                {% for mes in meses_idx %}
                 <td>{{ "{:,.2f}".format(totales_por_mes[mes][columna]) }}</td>
                 {% endfor %}
               </tr>
               {% endfor %}
               <tr>
                 <td><strong>Total (resumen)</strong></td>
-                {% for mes in range(1, 13) %}
+                {% for mes in meses_idx %}
                 <td><strong>{{ "{:,.2f}".format(resumen_total_mes[mes]) }}</strong></td>
                 {% endfor %}
               </tr>
             </tbody>
           </table>
         </div>
-        {% endif %}
       </div>
 
       {% if download_id %}

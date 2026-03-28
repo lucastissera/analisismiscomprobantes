@@ -12,6 +12,7 @@ import re
 import sys
 import csv
 from pathlib import Path
+import numpy as np
 import pandas as pd
 
 # Columnas a evaluar: se les aplica signo por Tipo y multiplicación por Tipo Cambio
@@ -42,6 +43,11 @@ COLUMNAS_TOTAL_RESUMEN = [
     "Op. Exentas",
     "Otros Tributos",
     "Total IVA",
+]
+
+# Columnas de detalle (IVA por alícuota e Imp. Total): no entran en la fila "Total (resumen)"
+COLUMNAS_DETALLE_SIN_RESUMEN = [
+    c for c in COLUMNAS_A_AJUSTAR if c not in COLUMNAS_TOTAL_RESUMEN
 ]
 
 # Códigos numéricos de la columna "Tipo" que se consideran nota de crédito (suma en negativo)
@@ -100,13 +106,22 @@ def parsear_numero_importe(val) -> float:
     Convierte valores típicos de exportación ARCA/CSV argentino a float.
     Soporta coma decimal (10156,44), notación científica con coma (7,50154E+13)
     y separador de miles con punto (1.234,56).
+    También acepta escalares numéricos de numpy/pandas ya leídos por read_csv.
     """
     if pd.isna(val):
         return float("nan")
     if isinstance(val, bool):
         return float("nan")
-    if isinstance(val, (int, float)):
+    if isinstance(val, (int, float)) and not isinstance(val, bool):
         return float(val)
+
+    if isinstance(val, np.generic):
+        return float(val)
+
+    try:
+        return float(val)
+    except (TypeError, ValueError):
+        pass
 
     s = str(val).strip()
     if not s or s in ("-", "–", "$"):
@@ -146,7 +161,23 @@ def parsear_numero_importe(val) -> float:
 
 
 def serie_a_float_importe(serie: pd.Series) -> pd.Series:
-    return serie.map(parsear_numero_importe)
+    """Convierte serie a float; prioriza dtype numérico y luego formato AR con coma."""
+    if pd.api.types.is_numeric_dtype(serie):
+        return pd.to_numeric(serie, errors="coerce")
+    parsed = serie.map(parsear_numero_importe)
+    # Si todo falló (p. ej. strings que pandas no interpretó), reintento vectorizado
+    if parsed.notna().any() or serie.empty:
+        return parsed
+    str_serie = serie.astype(str).str.strip()
+    str_serie = str_serie.replace("", pd.NA).replace("nan", pd.NA)
+    coma_decimal = str_serie.str.contains(",", na=False) & ~str_serie.str.contains(
+        r"[Ee]", na=False, regex=True
+    )
+    tmp = str_serie.copy()
+    tmp.loc[coma_decimal] = tmp.loc[coma_decimal].str.replace(".", "", regex=False)
+    tmp = tmp.str.replace(",", ".", regex=False)
+    fallback = pd.to_numeric(tmp, errors="coerce")
+    return fallback
 
 
 def total_resumen_pantalla(totales: dict[str, float]) -> float:
@@ -181,6 +212,9 @@ def normalizar_columnas(df: pd.DataFrame) -> pd.DataFrame:
                 break
     if renombres:
         df = df.rename(columns=renombres)
+    # Evita df["Imp. Total"] como DataFrame si hubo nombres duplicados tras renombrar
+    if df.columns.duplicated().any():
+        df = df.loc[:, ~df.columns.duplicated()].copy()
     return df
 
 
@@ -309,36 +343,54 @@ def procesar_archivo(
             f"Columnas en el archivo: {nombres}"
         )
 
+    df = df.reset_index(drop=True)
+
     # Signo: -1 si es nota de crédito, +1 si no (código como número, sin ceros a la izquierda)
     tipo_str = df["Tipo"].astype(str).str.strip()
     codigo_str = tipo_str.str.split(" - ", n=1).str[0].str.strip()  # ej. "003 - NOTA..." -> "003"
     codigo_num = pd.to_numeric(codigo_str, errors="coerce")  # "003" y "3" -> 3
     es_nota_credito = codigo_num.isin(CODIGOS_NOTA_CREDITO)
-    signo = 1 - 2 * es_nota_credito.astype(int)  # True -> -1, False -> 1
+    signo = (1 - 2 * es_nota_credito.astype(int)).reset_index(drop=True)
 
-    es_grupo_b_o_c = codigo_num.isin(CODIGOS_GRUPO_B | CODIGOS_GRUPO_C)
+    es_grupo_b_o_c = codigo_num.isin(CODIGOS_GRUPO_B | CODIGOS_GRUPO_C).reset_index(
+        drop=True
+    )
 
     # Factor de conversión por fila: vacíos/no numéricos se toman como 0 solo para cálculo
-    tipo_cambio = serie_a_float_importe(df["Tipo Cambio"]).fillna(0)
+    tipo_cambio = serie_a_float_importe(df["Tipo Cambio"]).fillna(0).reset_index(
+        drop=True
+    )
 
-    mes_fila = pd.to_datetime(df["Fecha Emisión"], dayfirst=True, errors="coerce").dt.month
+    try:
+        fechas = pd.to_datetime(
+            df["Fecha Emisión"], dayfirst=True, errors="coerce", format="mixed"
+        )
+    except (TypeError, ValueError):
+        fechas = pd.to_datetime(df["Fecha Emisión"], dayfirst=True, errors="coerce")
+    mes_fila = fechas.dt.month.reset_index(drop=True)
 
     # Ajustar signos y tipo de cambio en el DataFrame de salida, luego acumular totales
     df_ajustado = df.copy()
     resultado: dict[str, float] = {}
-    matriz_ajustada = pd.DataFrame(index=df.index, columns=COLUMNAS_A_AJUSTAR, dtype=float)
+    matriz_ajustada = pd.DataFrame(
+        0.0, index=range(len(df)), columns=COLUMNAS_A_AJUSTAR, dtype=float
+    )
 
-    imp_total_num = serie_a_float_importe(df["Imp. Total"]).fillna(0)
-    neto_grav_num = serie_a_float_importe(df["Neto Gravado Total"]).fillna(0)
+    imp_total_num = serie_a_float_importe(df["Imp. Total"]).fillna(0).reset_index(
+        drop=True
+    )
+    neto_grav_num = serie_a_float_importe(df["Neto Gravado Total"]).fillna(0).reset_index(
+        drop=True
+    )
 
     for col in COLUMNAS_A_AJUSTAR:
         if col == "Neto Gravado Total":
             valores = neto_grav_num.where(~es_grupo_b_o_c, imp_total_num)
         else:
-            valores = serie_a_float_importe(df[col]).fillna(0)
-        valores_ajustados = valores * signo * tipo_cambio
-        df_ajustado[col] = valores_ajustados
-        matriz_ajustada[col] = valores_ajustados
+            valores = serie_a_float_importe(df[col]).fillna(0).reset_index(drop=True)
+        valores_ajustados = (valores * signo * tipo_cambio).astype(float)
+        df_ajustado[col] = valores_ajustados.values
+        matriz_ajustada[col] = valores_ajustados.values
         resultado[col] = float(valores_ajustados.sum())
 
     totales_por_mes: dict[int, dict[str, float]] = {
@@ -352,7 +404,7 @@ def procesar_archivo(
         if mi < 1 or mi > 12:
             continue
         for col in COLUMNAS_A_AJUSTAR:
-            totales_por_mes[mi][col] += float(matriz_ajustada.iloc[pos][col])
+            totales_por_mes[mi][col] += float(matriz_ajustada.at[pos, col])
 
     return df_ajustado, resultado, totales_por_mes
 
