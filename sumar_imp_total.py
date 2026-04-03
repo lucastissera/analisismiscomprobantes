@@ -458,8 +458,8 @@ def procesar_archivo(
     Lee un archivo Excel y devuelve la sumatoria de las columnas indicadas.
     Fila 1 = encabezado general, fila 2 = encabezados de columnas, datos desde fila 3.
     Las filas con Tipo = nota de crédito se suman en valor negativo.
-    Comprobantes B, C, E exportación y tique B/C: Imp. Total se refleja en Neto Grav. IVA 0%
-    (ajustado por signo NC y tipo de cambio). No se modifica Neto Gravado Total por ello.
+    Comprobantes en CODIGOS_IMP_TOTAL_EN_NETO_IVA_0: Imp. Total pasa a Neto Grav. IVA 0%
+    (signo NC y tipo de cambio). En esas filas Neto Gravado Total queda en 0 para no duplicar.
 
     Args:
         ruta_excel: Ruta al archivo .xlsx
@@ -521,7 +521,8 @@ def procesar_archivo(
         if col == "Neto Grav. IVA 0%":
             valores = neto_iva0_num.where(~es_imp_en_neto_iva_0, imp_total_num)
         elif col == "Neto Gravado Total":
-            valores = neto_grav_num
+            # B/C (y lista afín): el importe va solo a IVA 0%; no duplicar en neto gravado total
+            valores = neto_grav_num.where(~es_imp_en_neto_iva_0, 0.0)
         else:
             valores = serie_a_float_importe(df[col]).fillna(0).reset_index(drop=True)
         valores_ajustados = (valores * signo * tipo_cambio).astype(float)
