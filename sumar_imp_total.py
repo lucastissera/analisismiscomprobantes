@@ -38,6 +38,7 @@ COLUMNAS_A_AJUSTAR = [
 
 # Totales que se suman en la línea "Total" del resumen en pantalla (no IVA desglosado ni Imp. Total)
 COLUMNAS_TOTAL_RESUMEN = [
+    "Neto Grav. IVA 0%",
     "Neto Gravado Total",
     "Neto No Gravado",
     "Op. Exentas",
@@ -57,9 +58,14 @@ CODIGOS_NOTA_CREDITO = {
     110, 112, 113, 114, 203, 206, 208, 211, 213,
 }
 
-# Comprobantes régimen B / C (código numérico en columna Tipo): Imp. Total pasa a Neto Gravado Total
-CODIGOS_GRUPO_B = {6, 7, 8, 9, 206, 208}
-CODIGOS_GRUPO_C = {11, 12, 13, 211, 213}
+# Tipos B/C (y afines): Imp. Total → Neto Grav. IVA 0% (no Neto Gravado Total). Columna Tipo.
+CODIGOS_IMP_TOTAL_EN_NETO_IVA_0 = frozenset(
+    (
+        6, 7, 8, 9, 10, 11, 12, 13, 15, 16, 18, 19, 20, 21, 25, 26, 28, 29,
+        40, 41, 42, 43, 44, 46, 47, 61, 64, 82, 83, 90, 91, 109, 110, 111,
+        113, 114, 116, 117, 206, 207, 208, 211, 212, 213,
+    )
+)
 
 NOMBRES_MESES = [
     "enero",
@@ -287,6 +293,38 @@ def _mes_fila_fecha_emision(
     return fechas.dt.month.reset_index(drop=True)
 
 
+def _totales_por_mes_csv_por_groupby(
+    df_ajustado: pd.DataFrame,
+    mes_fila: pd.Series,
+    columnas: list[str],
+) -> dict[int, dict[str, float]]:
+    """
+    Totales mensuales para CSV vía groupby sobre valores numéricos explícitos.
+    Evita desvíos del resumen mensual respecto al Excel exportado (mismas filas/columnas).
+    """
+    num = df_ajustado[columnas].apply(
+        lambda s: pd.to_numeric(s, errors="coerce")
+    ).fillna(0.0)
+    num = num.astype(np.float64)
+    mes_arr = mes_fila.to_numpy(dtype=float, copy=False)
+    valid = np.isfinite(mes_arr) & (mes_arr >= 1) & (mes_arr <= 12)
+    if not valid.any():
+        return {m: {c: 0.0 for c in columnas} for m in range(1, 13)}
+    tmp = num.loc[valid].copy()
+    tmp.insert(0, "_mes", mes_arr[valid].astype(np.int64))
+    agg = tmp.groupby("_mes", sort=True).sum()
+    out: dict[int, dict[str, float]] = {
+        m: {c: 0.0 for c in columnas} for m in range(1, 13)
+    }
+    for m in range(1, 13):
+        if m not in agg.index:
+            continue
+        row = agg.loc[m]
+        for c in columnas:
+            out[m][c] = float(row[c])
+    return out
+
+
 def _mejor_dataframe_excel(entrada, hoja: str | int) -> pd.DataFrame:
     """
     Prueba header=0 y header=1 en .xlsx y elige el que tenga todas las columnas requeridas.
@@ -420,7 +458,8 @@ def procesar_archivo(
     Lee un archivo Excel y devuelve la sumatoria de las columnas indicadas.
     Fila 1 = encabezado general, fila 2 = encabezados de columnas, datos desde fila 3.
     Las filas con Tipo = nota de crédito se suman en valor negativo.
-    Comprobantes B/C: el importe de Imp. Total se usa como Neto Gravado Total (ajustado luego).
+    Comprobantes B, C, E exportación y tique B/C: Imp. Total se refleja en Neto Grav. IVA 0%
+    (ajustado por signo NC y tipo de cambio). No se modifica Neto Gravado Total por ello.
 
     Args:
         ruta_excel: Ruta al archivo .xlsx
@@ -454,7 +493,7 @@ def procesar_archivo(
     es_nota_credito = codigo_num.isin(CODIGOS_NOTA_CREDITO)
     signo = (1 - 2 * es_nota_credito.astype(int)).reset_index(drop=True)
 
-    es_grupo_b_o_c = codigo_num.isin(CODIGOS_GRUPO_B | CODIGOS_GRUPO_C).reset_index(
+    es_imp_en_neto_iva_0 = codigo_num.isin(CODIGOS_IMP_TOTAL_EN_NETO_IVA_0).reset_index(
         drop=True
     )
 
@@ -474,10 +513,15 @@ def procesar_archivo(
     neto_grav_num = serie_a_float_importe(df["Neto Gravado Total"]).fillna(0).reset_index(
         drop=True
     )
+    neto_iva0_num = serie_a_float_importe(df["Neto Grav. IVA 0%"]).fillna(0).reset_index(
+        drop=True
+    )
 
     for col in COLUMNAS_A_AJUSTAR:
-        if col == "Neto Gravado Total":
-            valores = neto_grav_num.where(~es_grupo_b_o_c, imp_total_num)
+        if col == "Neto Grav. IVA 0%":
+            valores = neto_iva0_num.where(~es_imp_en_neto_iva_0, imp_total_num)
+        elif col == "Neto Gravado Total":
+            valores = neto_grav_num
         else:
             valores = serie_a_float_importe(df[col]).fillna(0).reset_index(drop=True)
         valores_ajustados = (valores * signo * tipo_cambio).astype(float)
@@ -487,19 +531,25 @@ def procesar_archivo(
     for col in COLUMNAS_A_AJUSTAR:
         resultado[col] = float(pd.to_numeric(df_ajustado[col], errors="coerce").fillna(0).sum())
 
-    totales_por_mes: dict[int, dict[str, float]] = {
-        m: {c: 0.0 for c in COLUMNAS_A_AJUSTAR} for m in range(1, 13)
-    }
-    for pos in range(len(df)):
-        m = mes_fila.iloc[pos]
-        if pd.isna(m):
-            continue
-        mi = int(m)
-        if mi < 1 or mi > 12:
-            continue
-        for col in COLUMNAS_A_AJUSTAR:
-            celda = pd.to_numeric(df_ajustado[col].iloc[pos], errors="coerce")
-            totales_por_mes[mi][col] += 0.0 if pd.isna(celda) else float(celda)
+    es_csv = str(nombre_archivo or "").lower().endswith(".csv")
+    if es_csv:
+        totales_por_mes = _totales_por_mes_csv_por_groupby(
+            df_ajustado, mes_fila, COLUMNAS_A_AJUSTAR
+        )
+    else:
+        totales_por_mes = {
+            m: {c: 0.0 for c in COLUMNAS_A_AJUSTAR} for m in range(1, 13)
+        }
+        for pos in range(len(df)):
+            m = mes_fila.iloc[pos]
+            if pd.isna(m):
+                continue
+            mi = int(m)
+            if mi < 1 or mi > 12:
+                continue
+            for col in COLUMNAS_A_AJUSTAR:
+                celda = pd.to_numeric(df_ajustado[col].iloc[pos], errors="coerce")
+                totales_por_mes[mi][col] += 0.0 if pd.isna(celda) else float(celda)
 
     return df_ajustado, resultado, totales_por_mes
 
