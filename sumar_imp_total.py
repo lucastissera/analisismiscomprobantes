@@ -481,10 +481,9 @@ def procesar_archivo(
     Lee un archivo Excel y devuelve la sumatoria de las columnas indicadas.
     Fila 1 = encabezado general, fila 2 = encabezados de columnas, datos desde fila 3.
     Las filas con Tipo = nota de crédito se suman en valor negativo.
-    En lectura Excel (no CSV), comprobantes CODIGOS_IMP_TOTAL_EN_NETO_IVA_0 (B/C y afines):
-    en origen solo suele haber importe en Imp. Total; se copia a Neto Grav. IVA 0% y a Imp. Total
-    (misma base antes de signo NC y tipo de cambio), el resto de columnas ajustadas quedan en 0
-    y Neto Gravado Total en 0. CSV: sin ese vaciado extra (solo IVA 0% / neto grav. como antes).
+    Comprobantes CODIGOS_IMP_TOTAL_EN_NETO_IVA_0 (B/C y afines), en .xlsx y .csv: el importe
+    suele estar solo en Imp. Total; se refleja en Neto Grav. IVA 0% y en Imp. Total (misma base
+    antes de signo NC y tipo de cambio), Neto Gravado Total en 0 y el resto de columnas ajustadas en 0.
 
     Args:
         ruta_excel: Ruta al archivo .xlsx
@@ -519,9 +518,6 @@ def procesar_archivo(
     es_imp_en_neto_iva_0 = codigo_num.isin(CODIGOS_IMP_TOTAL_EN_NETO_IVA_0).reset_index(
         drop=True
     )
-    # Misma regla que leer_tabla: todo lo que no es .csv se leyó como Excel
-    nombre_entrada = (nombre_archivo or str(ruta_excel)).lower()
-    es_lectura_excel = not nombre_entrada.endswith(".csv")
 
     # Factor de conversión por fila: vacíos/no numéricos se toman como 0 solo para cálculo
     tipo_cambio = serie_a_float_importe(df["Tipo Cambio"]).fillna(0).reset_index(
@@ -551,11 +547,9 @@ def procesar_archivo(
         elif col == "Imp. Total":
             # Misma base que Neto Grav. IVA 0% en B/C: coherencia tras signo y tipo de cambio
             valores = imp_total_num
-        elif es_lectura_excel:
+        else:
             base = serie_a_float_importe(df[col]).fillna(0).reset_index(drop=True)
             valores = base.where(~es_imp_en_neto_iva_0, 0.0)
-        else:
-            valores = serie_a_float_importe(df[col]).fillna(0).reset_index(drop=True)
         valores_ajustados = (valores * signo * tipo_cambio).astype(float)
         df_ajustado[col] = valores_ajustados.values
 
