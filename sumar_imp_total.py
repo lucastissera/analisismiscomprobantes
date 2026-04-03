@@ -270,9 +270,9 @@ def _mes_fila_fecha_emision(
     df: pd.DataFrame, nombre_archivo: str | None
 ) -> pd.Series:
     """
-    Mes calendario (1-12) por fila según Fecha Emisión.
-    Para .xlsx se mantiene la lógica actual. Para .csv se parsea de forma más robusta
-    (texto dd/mm/aaaa, etc.) para que el resumen mensual sume las mismas filas que el total anual.
+    Mes calendario (1-12) por fila según la columna Fecha Emisión del comprobante.
+    .xlsx: dayfirst + format mixed donde aplica.
+    .csv: lectura con dayfirst en read_csv; aquí reforzamos texto dd/mm/aaaa y seriales Excel.
     """
     serie = df["Fecha Emisión"]
     es_csv = str(nombre_archivo or "").lower().endswith(".csv")
@@ -286,7 +286,18 @@ def _mes_fila_fecha_emision(
             fechas = pd.to_datetime(serie, dayfirst=True, errors="coerce")
         return fechas.dt.month.reset_index(drop=True)
 
-    # --- Solo CSV: evitar NaT en fechas texto que sí suman en el total anual ---
+    # --- CSV: mes según fecha de emisión (misma fila que importes en pantalla / Excel) ---
+    if pd.api.types.is_numeric_dtype(serie):
+        sn = pd.to_numeric(serie, errors="coerce")
+        if sn.notna().any():
+            mn = float(sn.min())
+            mx = float(sn.max())
+            # Rango típico día serial Excel (aprox. 1995–2040)
+            if mn > 20000 and mx < 80000:
+                fechas = pd.to_datetime(sn, unit="D", origin="1899-12-30", errors="coerce")
+                if fechas.notna().any():
+                    return fechas.dt.month.astype(float).reset_index(drop=True)
+
     if pd.api.types.is_datetime64_any_dtype(serie):
         fechas = pd.to_datetime(serie, errors="coerce")
     else:
@@ -313,18 +324,19 @@ def _mes_fila_fecha_emision(
                 s.loc[pend], format="%Y-%m-%d", errors="coerce"
             )
 
-    return fechas.dt.month.reset_index(drop=True)
+    # NaT -> NaN float para que _totales_anuales_y_por_mes omita mes con isfinite
+    mes = fechas.dt.month
+    return mes.astype(float).where(mes.notna(), np.nan).reset_index(drop=True)
 
 
 def _totales_anuales_y_por_mes(
     df_ajustado: pd.DataFrame,
-    mes_fila: pd.Series,
     columnas: list[str],
+    nombre_archivo: str | None,
 ) -> tuple[dict[str, float], dict[int, dict[str, float]]]:
     """
-    Suma por columna (todas las filas) y acumulado por mes 1-12.
-    Misma implementación para .csv y .xlsx: una conversión numérica sobre las columnas
-    canónicas del df ajustado, alineada con lo que se exporta a Excel.
+    Suma por columna (todas las filas) y acumulado por mes 1-12 según Fecha Emisión
+    de cada fila del propio df ajustado (mismo criterio que el archivo de salida).
     """
     block = df_ajustado[columnas].apply(pd.to_numeric, errors="coerce").fillna(0.0)
     block_arr = block.to_numpy(dtype=np.float64, copy=False)
@@ -333,9 +345,15 @@ def _totales_anuales_y_por_mes(
     totales_por_mes: dict[int, dict[str, float]] = {
         m: {c: 0.0 for c in columnas} for m in range(1, 13)
     }
-    mes_s = mes_fila.reset_index(drop=True)
-    mes_np = mes_s.to_numpy(dtype=float, copy=False)
-    n = min(block_arr.shape[0], len(mes_np))
+    mes_fila = _mes_fila_fecha_emision(df_ajustado, nombre_archivo)
+    mes_np = mes_fila.to_numpy(dtype=float, copy=False)
+    n = block_arr.shape[0]
+    if len(mes_np) != n:
+        aligned = np.full(n, np.nan, dtype=np.float64)
+        k = min(n, len(mes_np))
+        if k > 0:
+            aligned[:k] = mes_np[:k]
+        mes_np = aligned
     for pos in range(n):
         m = mes_np[pos]
         if not np.isfinite(m):
@@ -440,6 +458,8 @@ def leer_tabla(entrada, hoja: str | int = 0, nombre_archivo: str | None = None) 
                         "engine": "python",
                         "skipinitialspace": True,
                         "encoding": "utf-8-sig",
+                        # ARCA / Argentina: día primero en fechas ambiguas al inferir dtypes
+                        "dayfirst": True,
                     }
                     if on_bad_lines is not None:
                         kwargs["on_bad_lines"] = on_bad_lines
@@ -525,8 +545,6 @@ def procesar_archivo(
         drop=True
     )
 
-    mes_fila = _mes_fila_fecha_emision(df, nombre_archivo)
-
     # Ajustar signos y tipo de cambio en el DataFrame de salida, luego acumular totales
     df_ajustado = df.copy()
     resultado: dict[str, float] = {}
@@ -555,7 +573,7 @@ def procesar_archivo(
         df_ajustado[col] = valores_ajustados.values
 
     resultado, totales_por_mes = _totales_anuales_y_por_mes(
-        df_ajustado, mes_fila, COLUMNAS_A_AJUSTAR
+        df_ajustado, COLUMNAS_A_AJUSTAR, nombre_archivo
     )
 
     return df_ajustado, resultado, totales_por_mes
