@@ -316,36 +316,37 @@ def _mes_fila_fecha_emision(
     return fechas.dt.month.reset_index(drop=True)
 
 
-def _totales_por_mes_csv_por_groupby(
+def _totales_anuales_y_por_mes(
     df_ajustado: pd.DataFrame,
     mes_fila: pd.Series,
     columnas: list[str],
-) -> dict[int, dict[str, float]]:
+) -> tuple[dict[str, float], dict[int, dict[str, float]]]:
     """
-    Totales mensuales para CSV vía groupby sobre valores numéricos explícitos.
-    Evita desvíos del resumen mensual respecto al Excel exportado (mismas filas/columnas).
+    Suma por columna (todas las filas) y acumulado por mes 1-12.
+    Misma implementación para .csv y .xlsx: una conversión numérica sobre las columnas
+    canónicas del df ajustado, alineada con lo que se exporta a Excel.
     """
-    num = df_ajustado[columnas].apply(
-        lambda s: pd.to_numeric(s, errors="coerce")
-    ).fillna(0.0)
-    num = num.astype(np.float64)
-    mes_arr = mes_fila.to_numpy(dtype=float, copy=False)
-    valid = np.isfinite(mes_arr) & (mes_arr >= 1) & (mes_arr <= 12)
-    if not valid.any():
-        return {m: {c: 0.0 for c in columnas} for m in range(1, 13)}
-    tmp = num.loc[valid].copy()
-    tmp.insert(0, "_mes", mes_arr[valid].astype(np.int64))
-    agg = tmp.groupby("_mes", sort=True).sum()
-    out: dict[int, dict[str, float]] = {
+    block = df_ajustado[columnas].apply(pd.to_numeric, errors="coerce").fillna(0.0)
+    block_arr = block.to_numpy(dtype=np.float64, copy=False)
+    resultado = {c: float(block_arr[:, j].sum()) for j, c in enumerate(columnas)}
+
+    totales_por_mes: dict[int, dict[str, float]] = {
         m: {c: 0.0 for c in columnas} for m in range(1, 13)
     }
-    for m in range(1, 13):
-        if m not in agg.index:
+    mes_s = mes_fila.reset_index(drop=True)
+    mes_np = mes_s.to_numpy(dtype=float, copy=False)
+    n = min(block_arr.shape[0], len(mes_np))
+    for pos in range(n):
+        m = mes_np[pos]
+        if not np.isfinite(m):
             continue
-        row = agg.loc[m]
-        for c in columnas:
-            out[m][c] = float(row[c])
-    return out
+        mi = int(m)
+        if mi < 1 or mi > 12:
+            continue
+        for j, c in enumerate(columnas):
+            totales_por_mes[mi][c] += float(block_arr[pos, j])
+
+    return resultado, totales_por_mes
 
 
 def _mejor_dataframe_excel(entrada, hoja: str | int) -> pd.DataFrame:
@@ -553,29 +554,9 @@ def procesar_archivo(
         valores_ajustados = (valores * signo * tipo_cambio).astype(float)
         df_ajustado[col] = valores_ajustados.values
 
-    # Totales y por mes desde el mismo DataFrame que se exporta (evita desvíos con el frontend)
-    for col in COLUMNAS_A_AJUSTAR:
-        resultado[col] = float(pd.to_numeric(df_ajustado[col], errors="coerce").fillna(0).sum())
-
-    es_csv = str(nombre_archivo or "").lower().endswith(".csv")
-    if es_csv:
-        totales_por_mes = _totales_por_mes_csv_por_groupby(
-            df_ajustado, mes_fila, COLUMNAS_A_AJUSTAR
-        )
-    else:
-        totales_por_mes = {
-            m: {c: 0.0 for c in COLUMNAS_A_AJUSTAR} for m in range(1, 13)
-        }
-        for pos in range(len(df)):
-            m = mes_fila.iloc[pos]
-            if pd.isna(m):
-                continue
-            mi = int(m)
-            if mi < 1 or mi > 12:
-                continue
-            for col in COLUMNAS_A_AJUSTAR:
-                celda = pd.to_numeric(df_ajustado[col].iloc[pos], errors="coerce")
-                totales_por_mes[mi][col] += 0.0 if pd.isna(celda) else float(celda)
+    resultado, totales_por_mes = _totales_anuales_y_por_mes(
+        df_ajustado, mes_fila, COLUMNAS_A_AJUSTAR
+    )
 
     return df_ajustado, resultado, totales_por_mes
 
