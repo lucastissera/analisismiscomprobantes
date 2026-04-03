@@ -243,6 +243,29 @@ def _columnas_requeridas_lectura() -> set[str]:
     return set(COLUMNAS_A_AJUSTAR + ["Tipo", "Tipo Cambio", "Fecha Emisión"])
 
 
+def serie_codigo_tipo_comprobante(serie_tipo: pd.Series) -> pd.Series:
+    """
+    Código numérico AFIP en la columna Tipo (para isin con CODIGOS_*).
+    - Excel a veces guarda el código como número (6, 11).
+    - En texto: '6 - Factura B', '006 - ...', o guiones Unicode (– —) mal interpretados
+      por split(' - '): se normalizan y, si hace falta, se toman dígitos iniciales.
+    """
+    s = serie_tipo
+    if pd.api.types.is_numeric_dtype(s):
+        return pd.to_numeric(s, errors="coerce")
+
+    t = s.astype(str).str.strip()
+    t = t.replace({"nan": pd.NA, "None": pd.NA, "<NA>": pd.NA})
+    t = t.str.replace("\u2013", "-").str.replace("\u2014", "-")
+    part0 = t.str.split(r"\s*-\s*", n=1, regex=True).str[0].str.strip()
+    codigo = pd.to_numeric(part0, errors="coerce")
+    vac = codigo.isna() & t.notna()
+    if vac.any():
+        dig = t.loc[vac].str.extract(r"^(\d+)", expand=False)
+        codigo.loc[vac] = pd.to_numeric(dig, errors="coerce")
+    return codigo
+
+
 def _mes_fila_fecha_emision(
     df: pd.DataFrame, nombre_archivo: str | None
 ) -> pd.Series:
@@ -458,10 +481,10 @@ def procesar_archivo(
     Lee un archivo Excel y devuelve la sumatoria de las columnas indicadas.
     Fila 1 = encabezado general, fila 2 = encabezados de columnas, datos desde fila 3.
     Las filas con Tipo = nota de crédito se suman en valor negativo.
-    En .xlsx, comprobantes CODIGOS_IMP_TOTAL_EN_NETO_IVA_0 (B/C y afines): en origen solo
-    suele haber importe en Imp. Total; se copia a Neto Grav. IVA 0% y a Imp. Total (misma base
-    antes de signo NC y tipo de cambio), el resto de columnas ajustadas quedan en 0 y Neto
-    Gravado Total en 0. CSV: sin ese vaciado extra (solo IVA 0% / neto grav. como antes).
+    En lectura Excel (no CSV), comprobantes CODIGOS_IMP_TOTAL_EN_NETO_IVA_0 (B/C y afines):
+    en origen solo suele haber importe en Imp. Total; se copia a Neto Grav. IVA 0% y a Imp. Total
+    (misma base antes de signo NC y tipo de cambio), el resto de columnas ajustadas quedan en 0
+    y Neto Gravado Total en 0. CSV: sin ese vaciado extra (solo IVA 0% / neto grav. como antes).
 
     Args:
         ruta_excel: Ruta al archivo .xlsx
@@ -488,17 +511,17 @@ def procesar_archivo(
 
     df = df.reset_index(drop=True)
 
-    # Signo: -1 si es nota de crédito, +1 si no (código como número, sin ceros a la izquierda)
-    tipo_str = df["Tipo"].astype(str).str.strip()
-    codigo_str = tipo_str.str.split(" - ", n=1).str[0].str.strip()  # ej. "003 - NOTA..." -> "003"
-    codigo_num = pd.to_numeric(codigo_str, errors="coerce")  # "003" y "3" -> 3
+    # Signo: -1 si es nota de crédito, +1 si no (código numérico AFIP)
+    codigo_num = serie_codigo_tipo_comprobante(df["Tipo"])
     es_nota_credito = codigo_num.isin(CODIGOS_NOTA_CREDITO)
     signo = (1 - 2 * es_nota_credito.astype(int)).reset_index(drop=True)
 
     es_imp_en_neto_iva_0 = codigo_num.isin(CODIGOS_IMP_TOTAL_EN_NETO_IVA_0).reset_index(
         drop=True
     )
-    es_xlsx = str(nombre_archivo or "").lower().endswith(".xlsx")
+    # Misma regla que leer_tabla: todo lo que no es .csv se leyó como Excel
+    nombre_entrada = (nombre_archivo or str(ruta_excel)).lower()
+    es_lectura_excel = not nombre_entrada.endswith(".csv")
 
     # Factor de conversión por fila: vacíos/no numéricos se toman como 0 solo para cálculo
     tipo_cambio = serie_a_float_importe(df["Tipo Cambio"]).fillna(0).reset_index(
@@ -528,7 +551,7 @@ def procesar_archivo(
         elif col == "Imp. Total":
             # Misma base que Neto Grav. IVA 0% en B/C: coherencia tras signo y tipo de cambio
             valores = imp_total_num
-        elif es_xlsx:
+        elif es_lectura_excel:
             base = serie_a_float_importe(df[col]).fillna(0).reset_index(drop=True)
             valores = base.where(~es_imp_en_neto_iva_0, 0.0)
         else:
