@@ -266,35 +266,25 @@ def serie_codigo_tipo_comprobante(serie_tipo: pd.Series) -> pd.Series:
     return codigo
 
 
-def _mes_fila_fecha_emision(
-    df: pd.DataFrame, nombre_archivo: str | None
-) -> pd.Series:
+def _serie_fecha_emision_a_datetime(serie: pd.Series) -> pd.Series:
     """
-    Mes calendario (1-12) por fila según Fecha Emisión (misma lógica .xlsx y .csv).
-
-    - Excel con celda en formato General suele exponer el valor como **número serial**
-      (días desde 1899-12-30). Si se pasa a ``pd.to_datetime(..., format="mixed")`` sin
-      tratarlo, pandas lo interpreta como nanosegundos desde 1970 y el **mes queda mal**
-      (típico error en tabla "Por mes" en pantalla).
-    - CSV tipo fecha / texto d/m/yyyy (con 1 o 2 dígitos): ``dayfirst=True`` y formatos
-      de respaldo.
+    Convierte la columna Fecha Emisión a datetime64 (naïve o con TZ AR si aplica).
+    Misma lógica para .xlsx (General/serial) y .csv (texto d/m/y, ISO, etc.).
     """
-    serie = df["Fecha Emisión"].reset_index(drop=True)
+    serie = serie.reset_index(drop=True)
     n = len(serie)
     non_null = serie.notna()
     if n == 0 or not non_null.any():
-        return pd.Series(np.full(n, np.nan), dtype=float)
+        return pd.Series(pd.NaT, index=serie.index, dtype="datetime64[ns]")
 
-    # --- 1) Serial Excel: toda celda con dato es numérica y está en rango de días serial ---
+    # --- 1) Serial Excel ---
     sn = pd.to_numeric(serie, errors="coerce")
     if non_null.any() and bool((sn.notna() == non_null).all()):
         vmin, vmax = float(sn[non_null].min()), float(sn[non_null].max())
         if vmin > 20000 and vmax < 80000:
-            fechas = pd.to_datetime(sn, unit="D", origin="1899-12-30", errors="coerce")
-            mes = fechas.dt.month.astype(float)
-            return mes.where(fechas.notna(), np.nan).reset_index(drop=True)
+            return pd.to_datetime(sn, unit="D", origin="1899-12-30", errors="coerce")
 
-    # --- 2) Ya es datetime64 (p. ej. .xlsx leído como fecha o CSV inferido) ---
+    # --- 2) datetime64 ---
     if pd.api.types.is_datetime64_any_dtype(serie.dtype):
         fechas = pd.to_datetime(serie, errors="coerce")
         if pd.api.types.is_datetime64tz_dtype(fechas):
@@ -302,14 +292,17 @@ def _mes_fila_fecha_emision(
                 fechas = fechas.dt.tz_convert("America/Argentina/Buenos_Aires")
             except Exception:
                 pass
-        mes = fechas.dt.month.astype(float)
-        return mes.where(fechas.notna(), np.nan).reset_index(drop=True)
+        return fechas
 
-    # --- 3) Texto: d/m/y (ARCA), hora opcional; evitar format="mixed" sobre números ---
+    # --- 3) Texto ---
     s = serie.astype(str).str.strip()
     s = s.replace({"nan": pd.NA, "None": pd.NA, "<NA>": pd.NA, "NaT": pd.NA})
     s = s.str.replace(r"\s+\d{1,2}:\d{2}.*$", "", regex=True)
-    fechas = pd.to_datetime(s, dayfirst=True, errors="coerce")
+    # ISO primero (evita warning dayfirst con yyyy-mm-dd típico de CSV exportado)
+    fechas = pd.to_datetime(s, format="%Y-%m-%d", errors="coerce")
+    pend = fechas.isna() & s.notna()
+    if pend.any():
+        fechas.loc[pend] = pd.to_datetime(s.loc[pend], dayfirst=True, errors="coerce")
     pend = fechas.isna() & s.notna()
     if pend.any():
         fechas.loc[pend] = pd.to_datetime(
@@ -322,11 +315,6 @@ def _mes_fila_fecha_emision(
         )
     pend = fechas.isna() & s.notna()
     if pend.any():
-        fechas.loc[pend] = pd.to_datetime(
-            s.loc[pend], format="%Y-%m-%d", errors="coerce"
-        )
-    pend = fechas.isna() & s.notna()
-    if pend.any():
         try:
             fechas.loc[pend] = pd.to_datetime(
                 s.loc[pend], dayfirst=True, errors="coerce", format="mixed"
@@ -334,8 +322,37 @@ def _mes_fila_fecha_emision(
         except (TypeError, ValueError):
             pass
 
+    return fechas
+
+
+def _mes_fila_fecha_emision(
+    df: pd.DataFrame, nombre_archivo: str | None
+) -> pd.Series:
+    """
+    Mes calendario (1-12) por fila según Fecha Emisión (misma lógica .xlsx y .csv).
+    """
+    _ = nombre_archivo
+    fechas = _serie_fecha_emision_a_datetime(df["Fecha Emisión"])
     mes = fechas.dt.month.astype(float)
     return mes.where(fechas.notna(), np.nan).reset_index(drop=True)
+
+
+def _formatear_fecha_emision_salida_excel(df: pd.DataFrame) -> None:
+    """
+    Deja Fecha Emisión como texto dd/mm/yyyy en el DataFrame que se exporta a .xlsx,
+    igual que suele verse al procesar .xlsx (evita que CSV salga como yyyy-mm-dd).
+    No altera totales: debe llamarse después de _totales_anuales_y_por_mes.
+    """
+    if "Fecha Emisión" not in df.columns:
+        return
+    orig = df["Fecha Emisión"]
+    fechas = _serie_fecha_emision_a_datetime(orig)
+    texto = fechas.dt.strftime("%d/%m/%Y")
+    df["Fecha Emisión"] = np.where(
+        fechas.notna(),
+        texto,
+        np.where(orig.notna(), orig.astype(str), ""),
+    )
 
 
 def _totales_anuales_y_por_mes(
@@ -584,6 +601,7 @@ def procesar_archivo(
     resultado, totales_por_mes = _totales_anuales_y_por_mes(
         df_ajustado, COLUMNAS_A_AJUSTAR, nombre_archivo
     )
+    _formatear_fecha_emision_salida_excel(df_ajustado)
 
     return df_ajustado, resultado, totales_por_mes
 
