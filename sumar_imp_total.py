@@ -458,8 +458,10 @@ def procesar_archivo(
     Lee un archivo Excel y devuelve la sumatoria de las columnas indicadas.
     Fila 1 = encabezado general, fila 2 = encabezados de columnas, datos desde fila 3.
     Las filas con Tipo = nota de crédito se suman en valor negativo.
-    Comprobantes en CODIGOS_IMP_TOTAL_EN_NETO_IVA_0: Imp. Total pasa a Neto Grav. IVA 0%
-    (signo NC y tipo de cambio). En esas filas Neto Gravado Total queda en 0 para no duplicar.
+    En .xlsx, comprobantes CODIGOS_IMP_TOTAL_EN_NETO_IVA_0 (B/C y afines): en origen solo
+    suele haber importe en Imp. Total; se copia a Neto Grav. IVA 0% y a Imp. Total (misma base
+    antes de signo NC y tipo de cambio), el resto de columnas ajustadas quedan en 0 y Neto
+    Gravado Total en 0. CSV: sin ese vaciado extra (solo IVA 0% / neto grav. como antes).
 
     Args:
         ruta_excel: Ruta al archivo .xlsx
@@ -496,6 +498,7 @@ def procesar_archivo(
     es_imp_en_neto_iva_0 = codigo_num.isin(CODIGOS_IMP_TOTAL_EN_NETO_IVA_0).reset_index(
         drop=True
     )
+    es_xlsx = str(nombre_archivo or "").lower().endswith(".xlsx")
 
     # Factor de conversión por fila: vacíos/no numéricos se toman como 0 solo para cálculo
     tipo_cambio = serie_a_float_importe(df["Tipo Cambio"]).fillna(0).reset_index(
@@ -521,8 +524,13 @@ def procesar_archivo(
         if col == "Neto Grav. IVA 0%":
             valores = neto_iva0_num.where(~es_imp_en_neto_iva_0, imp_total_num)
         elif col == "Neto Gravado Total":
-            # B/C (y lista afín): el importe va solo a IVA 0%; no duplicar en neto gravado total
             valores = neto_grav_num.where(~es_imp_en_neto_iva_0, 0.0)
+        elif col == "Imp. Total":
+            # Misma base que Neto Grav. IVA 0% en B/C: coherencia tras signo y tipo de cambio
+            valores = imp_total_num
+        elif es_xlsx:
+            base = serie_a_float_importe(df[col]).fillna(0).reset_index(drop=True)
+            valores = base.where(~es_imp_en_neto_iva_0, 0.0)
         else:
             valores = serie_a_float_importe(df[col]).fillna(0).reset_index(drop=True)
         valores_ajustados = (valores * signo * tipo_cambio).astype(float)
