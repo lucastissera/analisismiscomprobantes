@@ -270,63 +270,72 @@ def _mes_fila_fecha_emision(
     df: pd.DataFrame, nombre_archivo: str | None
 ) -> pd.Series:
     """
-    Mes calendario (1-12) por fila según la columna Fecha Emisión del comprobante.
-    .xlsx: dayfirst + format mixed donde aplica.
-    .csv: lectura con dayfirst en read_csv; aquí reforzamos texto dd/mm/aaaa y seriales Excel.
-    """
-    serie = df["Fecha Emisión"]
-    es_csv = str(nombre_archivo or "").lower().endswith(".csv")
+    Mes calendario (1-12) por fila según Fecha Emisión (misma lógica .xlsx y .csv).
 
-    if not es_csv:
+    - Excel con celda en formato General suele exponer el valor como **número serial**
+      (días desde 1899-12-30). Si se pasa a ``pd.to_datetime(..., format="mixed")`` sin
+      tratarlo, pandas lo interpreta como nanosegundos desde 1970 y el **mes queda mal**
+      (típico error en tabla "Por mes" en pantalla).
+    - CSV tipo fecha / texto d/m/yyyy (con 1 o 2 dígitos): ``dayfirst=True`` y formatos
+      de respaldo.
+    """
+    serie = df["Fecha Emisión"].reset_index(drop=True)
+    n = len(serie)
+    non_null = serie.notna()
+    if n == 0 or not non_null.any():
+        return pd.Series(np.full(n, np.nan), dtype=float)
+
+    # --- 1) Serial Excel: toda celda con dato es numérica y está en rango de días serial ---
+    sn = pd.to_numeric(serie, errors="coerce")
+    if non_null.any() and bool((sn.notna() == non_null).all()):
+        vmin, vmax = float(sn[non_null].min()), float(sn[non_null].max())
+        if vmin > 20000 and vmax < 80000:
+            fechas = pd.to_datetime(sn, unit="D", origin="1899-12-30", errors="coerce")
+            mes = fechas.dt.month.astype(float)
+            return mes.where(fechas.notna(), np.nan).reset_index(drop=True)
+
+    # --- 2) Ya es datetime64 (p. ej. .xlsx leído como fecha o CSV inferido) ---
+    if pd.api.types.is_datetime64_any_dtype(serie.dtype):
+        fechas = pd.to_datetime(serie, errors="coerce")
+        if pd.api.types.is_datetime64tz_dtype(fechas):
+            try:
+                fechas = fechas.dt.tz_convert("America/Argentina/Buenos_Aires")
+            except Exception:
+                pass
+        mes = fechas.dt.month.astype(float)
+        return mes.where(fechas.notna(), np.nan).reset_index(drop=True)
+
+    # --- 3) Texto: d/m/y (ARCA), hora opcional; evitar format="mixed" sobre números ---
+    s = serie.astype(str).str.strip()
+    s = s.replace({"nan": pd.NA, "None": pd.NA, "<NA>": pd.NA, "NaT": pd.NA})
+    s = s.str.replace(r"\s+\d{1,2}:\d{2}.*$", "", regex=True)
+    fechas = pd.to_datetime(s, dayfirst=True, errors="coerce")
+    pend = fechas.isna() & s.notna()
+    if pend.any():
+        fechas.loc[pend] = pd.to_datetime(
+            s.loc[pend], format="%d/%m/%Y", errors="coerce"
+        )
+    pend = fechas.isna() & s.notna()
+    if pend.any():
+        fechas.loc[pend] = pd.to_datetime(
+            s.loc[pend], format="%d-%m-%Y", errors="coerce"
+        )
+    pend = fechas.isna() & s.notna()
+    if pend.any():
+        fechas.loc[pend] = pd.to_datetime(
+            s.loc[pend], format="%Y-%m-%d", errors="coerce"
+        )
+    pend = fechas.isna() & s.notna()
+    if pend.any():
         try:
-            fechas = pd.to_datetime(
-                serie, dayfirst=True, errors="coerce", format="mixed"
+            fechas.loc[pend] = pd.to_datetime(
+                s.loc[pend], dayfirst=True, errors="coerce", format="mixed"
             )
         except (TypeError, ValueError):
-            fechas = pd.to_datetime(serie, dayfirst=True, errors="coerce")
-        return fechas.dt.month.reset_index(drop=True)
+            pass
 
-    # --- CSV: mes según fecha de emisión (misma fila que importes en pantalla / Excel) ---
-    if pd.api.types.is_numeric_dtype(serie):
-        sn = pd.to_numeric(serie, errors="coerce")
-        if sn.notna().any():
-            mn = float(sn.min())
-            mx = float(sn.max())
-            # Rango típico día serial Excel (aprox. 1995–2040)
-            if mn > 20000 and mx < 80000:
-                fechas = pd.to_datetime(sn, unit="D", origin="1899-12-30", errors="coerce")
-                if fechas.notna().any():
-                    return fechas.dt.month.astype(float).reset_index(drop=True)
-
-    if pd.api.types.is_datetime64_any_dtype(serie):
-        fechas = pd.to_datetime(serie, errors="coerce")
-    else:
-        s = serie.astype(str).str.strip()
-        s = s.replace(
-            {"nan": pd.NA, "None": pd.NA, "<NA>": pd.NA, "NaT": pd.NA}
-        )
-        # Quitar hora si viene pegada (ej. "3/1/2025 12:00:00")
-        s = s.str.replace(r"\s+\d{1,2}:\d{2}.*$", "", regex=True)
-        fechas = pd.to_datetime(s, dayfirst=True, errors="coerce")
-        pend = fechas.isna() & s.notna()
-        if pend.any():
-            fechas.loc[pend] = pd.to_datetime(
-                s.loc[pend], format="%d/%m/%Y", errors="coerce"
-            )
-        pend = fechas.isna() & s.notna()
-        if pend.any():
-            fechas.loc[pend] = pd.to_datetime(
-                s.loc[pend], format="%d-%m-%Y", errors="coerce"
-            )
-        pend = fechas.isna() & s.notna()
-        if pend.any():
-            fechas.loc[pend] = pd.to_datetime(
-                s.loc[pend], format="%Y-%m-%d", errors="coerce"
-            )
-
-    # NaT -> NaN float para que _totales_anuales_y_por_mes omita mes con isfinite
-    mes = fechas.dt.month
-    return mes.astype(float).where(mes.notna(), np.nan).reset_index(drop=True)
+    mes = fechas.dt.month.astype(float)
+    return mes.where(fechas.notna(), np.nan).reset_index(drop=True)
 
 
 def _totales_anuales_y_por_mes(
