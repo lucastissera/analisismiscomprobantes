@@ -3,21 +3,41 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Procesar Excel</title>
+    <title>Mis Comprobantes — ARCA y análisis</title>
     <style>
       body {
         font-family: Arial, sans-serif;
         margin: 2rem;
       }
-      .card {
-        max-width: 100%;
-        border: 1px solid #ddd;
-        border-radius: 8px;
-        padding: 1rem;
+      .pagina {
+        max-width: 1200px;
+        margin: 0 auto;
       }
       .error {
         color: #b00020;
         margin-bottom: 0.75rem;
+      }
+      .paneles-superiores {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1.25rem;
+        align-items: stretch;
+      }
+      .recuadro {
+        flex: 1 1 320px;
+        border: 1px solid #bbb;
+        border-radius: 10px;
+        padding: 1rem 1.15rem;
+        background: #fafafa;
+        box-sizing: border-box;
+      }
+      .recuadro h1,
+      .recuadro h2 {
+        margin-top: 0;
+        font-size: 1.35rem;
+      }
+      .recuadro h1 {
+        font-size: 1.5rem;
       }
       button {
         margin-top: 0.75rem;
@@ -28,11 +48,27 @@
         border-radius: 6px;
         cursor: pointer;
       }
+      .lista-plantilla {
+        margin: 0.75rem 0 0 1rem;
+        padding: 0;
+        font-size: 0.9rem;
+        color: #333;
+        line-height: 1.45;
+      }
+      .lista-plantilla li {
+        margin-bottom: 0.35rem;
+      }
+      .nota-tecnica {
+        font-size: 0.82rem;
+        color: #555;
+        margin-top: 0.5rem;
+      }
       .resumen-filas {
         display: flex;
         flex-wrap: wrap;
         gap: 1.5rem;
         align-items: flex-start;
+        margin-top: 1.5rem;
       }
       .tabla-resumen-anual {
         flex: 0 0 auto;
@@ -75,99 +111,175 @@
       .tabla-meses th {
         background: #f5f5f5;
       }
+      .resultado-comprobantes {
+        margin-top: 1.5rem;
+        padding-top: 1rem;
+        border-top: 1px solid #ddd;
+      }
     </style>
   </head>
   <body>
-    <div class="card">
-      <h1>Procesador de Comprobantes</h1>
-      <p>Selecciona un archivo .xlsx o .csv para procesarlo y descargarlo ajustado.</p>
-
+    <div class="pagina">
       {% if error %}
       <div class="error">{{ error }}</div>
       {% endif %}
 
-      <form method="post" action="/procesar" enctype="multipart/form-data">
-        <label for="excel">Archivo Excel</label><br />
-        <input id="excel" name="excel" type="file" accept=".xlsx,.csv" required />
-        <br />
-        <button type="submit">Subir excel</button>
-      </form>
-
-      {% if mostrar_resultado %}
-      <hr />
-      <div class="resumen-filas">
-        <div class="tabla-resumen-anual">
-          <h2>Resumen (base del total)</h2>
-          <p class="subtitulo-detalle">
-            Solo estas filas suman el <strong>Total (resumen)</strong> (sin IVA desglosado ni Imp. Total).
+      <div class="paneles-superiores">
+        <section class="recuadro recuadro-izq" aria-labelledby="titulo-arca">
+          <h2 id="titulo-arca">CUIT en ARCA</h2>
+          <p class="subtitulo-detalle" style="margin-top: 0">
+            Descarga desde AFIP (Mis Comprobantes → Emitidos). Cargá una planilla
+            <strong>.xlsx</strong> con esta estructura:
           </p>
-          <table>
-            <tbody>
-              {% for columna, total in totales_resumen.items() %}
-              <tr>
-                <td style="padding-right: 12px">{{ columna }}</td>
-                <td>{{ "{:,.2f}".format(total) }}</td>
-              </tr>
-              {% endfor %}
-              <tr>
-                <td style="padding-top: 8px"><strong>Total (resumen)</strong></td>
-                <td style="padding-top: 8px"><strong>{{ "{:,.2f}".format(suma_total) }}</strong></td>
-              </tr>
-            </tbody>
-          </table>
+          <ul class="lista-plantilla">
+            <li>
+              <strong>Fila 1:</strong> títulos en las celdas <strong>A1, B1, C1 y D1</strong>
+              (CUIT representante, Clave fiscal, CUIT representado, Rango Fechas).
+            </li>
+            <li>
+              <strong>Desde la fila 2:</strong> columnas <strong>A</strong> y <strong>C</strong> solo
+              números, <strong>11 dígitos</strong> (CUIT sin guiones); columna <strong>B</strong> en
+              formato <strong>texto</strong> (acepta todos los caracteres); columna <strong>D</strong> en
+              formato <code>dd/mm/yyyy - dd/mm/yyyy</code>.
+            </li>
+          </ul>
+          <p class="nota-tecnica">
+            Rango máximo un año. Si <strong>D</strong> trae las fechas, los campos de abajo son opcionales.
+            Automatización: <code>CUIT_EN_ARCA_PLAYWRIGHT=1</code> y
+            <code>playwright install chromium</code>.
+          </p>
 
-          {% if totales_detalle %}
-          <h3 class="subtitulo-detalle" style="margin-top: 1rem">Detalle por alícuota (no entra en el total de arriba)</h3>
-          <table>
-            <tbody>
-              {% for columna, total in totales_detalle.items() %}
-              <tr>
-                <td style="padding-right: 12px">{{ columna }}</td>
-                <td>{{ "{:,.2f}".format(total) }}</td>
-              </tr>
-              {% endfor %}
-            </tbody>
-          </table>
+          <form method="post" action="/cuit-en-arca" enctype="multipart/form-data">
+            <label for="credenciales"><strong>Planilla Excel (.xlsx)</strong></label><br />
+            <input id="credenciales" name="credenciales" type="file" accept=".xlsx" required />
+            <br /><br />
+            <label for="fecha_desde">Fecha desde (si no está en columna D)</label><br />
+            <input
+              id="fecha_desde"
+              name="fecha_desde"
+              type="text"
+              placeholder="dd/mm/yyyy"
+              style="max-width: 12rem"
+            />
+            <br /><br />
+            <label for="fecha_hasta">Fecha hasta (si no está en columna D)</label><br />
+            <input
+              id="fecha_hasta"
+              name="fecha_hasta"
+              type="text"
+              placeholder="dd/mm/yyyy"
+              style="max-width: 12rem"
+            />
+            <br />
+            <button type="submit">Cargar planilla y ejecutar descarga ARCA</button>
+          </form>
+
+          {% if cuit_arca_ok %}
+          <p style="margin-top: 1rem; color: #1b5e20">
+            Listo. Descargá el archivo y cargalo en el recuadro de la derecha para analizarlo.
+          </p>
+          <p>
+            <a href="/descargar/{{ cuit_arca_download_id }}">Descargar {{ cuit_arca_nombre }}</a>
+          </p>
           {% endif %}
-        </div>
+        </section>
 
-        <div class="tabla-meses-wrap">
-          <h2>Por mes</h2>
-          <p class="subtitulo-detalle">Mismos conceptos que el resumen anual; columna mes según fecha de emisión.</p>
-          <table class="tabla-meses">
-            <thead>
-              <tr>
-                <th>Concepto</th>
-                {% for mes in meses_idx %}
-                <th>{{ nombres_meses[mes - 1] }}</th>
-                {% endfor %}
-              </tr>
-            </thead>
-            <tbody>
-              {% for columna in columnas_orden %}
-              <tr>
-                <td>{{ columna }}</td>
-                {% for mes in meses_idx %}
-                <td>{{ "{:,.2f}".format(totales_por_mes[mes][columna]) }}</td>
-                {% endfor %}
-              </tr>
-              {% endfor %}
-              <tr>
-                <td><strong>Total (resumen)</strong></td>
-                {% for mes in meses_idx %}
-                <td><strong>{{ "{:,.2f}".format(resumen_total_mes[mes]) }}</strong></td>
-                {% endfor %}
-              </tr>
-            </tbody>
-          </table>
-        </div>
+        <section class="recuadro recuadro-der" aria-labelledby="titulo-procesador">
+          <h1 id="titulo-procesador">Procesador de Comprobantes</h1>
+          <p class="subtitulo-detalle" style="margin-top: 0">
+            Subí un archivo <strong>.xlsx</strong> o <strong>.csv</strong> de Mis Comprobantes para
+            procesarlo y descargarlo ajustado (signos, tipo de cambio, columnas B/C, etc.).
+          </p>
+
+          <form method="post" action="/procesar" enctype="multipart/form-data">
+            <label for="excel"><strong>Archivo comprobantes</strong></label><br />
+            <input id="excel" name="excel" type="file" accept=".xlsx,.csv" required />
+            <br />
+            <button type="submit">Cargar y analizar comprobantes</button>
+          </form>
+        </section>
       </div>
 
-      {% if download_id %}
-      <p style="margin-top: 12px;">
-        <a href="/descargar/{{ download_id }}">Descargar archivo ajustado ({{ nombre_salida }})</a>
-      </p>
-      {% endif %}
+      {% if mostrar_resultado %}
+      <div class="resultado-comprobantes">
+        <div class="resumen-filas">
+          <div class="tabla-resumen-anual">
+            <h2>Resumen (base del total)</h2>
+            <p class="subtitulo-detalle">
+              Solo estas filas suman el <strong>Total (resumen)</strong> (sin IVA desglosado ni Imp. Total).
+            </p>
+            <table>
+              <tbody>
+                {% for columna, total in totales_resumen.items() %}
+                <tr>
+                  <td style="padding-right: 12px">{{ columna }}</td>
+                  <td>{{ "{:,.2f}".format(total) }}</td>
+                </tr>
+                {% endfor %}
+                <tr>
+                  <td style="padding-top: 8px"><strong>Total (resumen)</strong></td>
+                  <td style="padding-top: 8px"><strong>{{ "{:,.2f}".format(suma_total) }}</strong></td>
+                </tr>
+              </tbody>
+            </table>
+
+            {% if totales_detalle %}
+            <h3 class="subtitulo-detalle" style="margin-top: 1rem">
+              Detalle por alícuota (no entra en el total de arriba)
+            </h3>
+            <table>
+              <tbody>
+                {% for columna, total in totales_detalle.items() %}
+                <tr>
+                  <td style="padding-right: 12px">{{ columna }}</td>
+                  <td>{{ "{:,.2f}".format(total) }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+            {% endif %}
+          </div>
+
+          <div class="tabla-meses-wrap">
+            <h2>Por mes</h2>
+            <p class="subtitulo-detalle">
+              Mismos conceptos que el resumen anual; columna mes según fecha de emisión.
+            </p>
+            <table class="tabla-meses">
+              <thead>
+                <tr>
+                  <th>Concepto</th>
+                  {% for mes in meses_idx %}
+                  <th>{{ nombres_meses[mes - 1] }}</th>
+                  {% endfor %}
+                </tr>
+              </thead>
+              <tbody>
+                {% for columna in columnas_orden %}
+                <tr>
+                  <td>{{ columna }}</td>
+                  {% for mes in meses_idx %}
+                  <td>{{ "{:,.2f}".format(totales_por_mes[mes][columna]) }}</td>
+                  {% endfor %}
+                </tr>
+                {% endfor %}
+                <tr>
+                  <td><strong>Total (resumen)</strong></td>
+                  {% for mes in meses_idx %}
+                  <td><strong>{{ "{:,.2f}".format(resumen_total_mes[mes]) }}</strong></td>
+                  {% endfor %}
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {% if download_id %}
+        <p style="margin-top: 12px;">
+          <a href="/descargar/{{ download_id }}">Descargar archivo ajustado ({{ nombre_salida }})</a>
+        </p>
+        {% endif %}
+      </div>
       {% endif %}
     </div>
   </body>

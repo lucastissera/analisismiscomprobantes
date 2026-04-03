@@ -19,7 +19,7 @@ Abrir en navegador: `http://127.0.0.1:5000`
 4. Elegir el repo `analisismiscomprobantes`.
 5. Completar:
    - **Environment**: `Python 3`
-   - **Build Command**: `pip install -r requirements.txt`
+   - **Build Command**: `pip install -r requirements.txt && playwright install chromium && playwright install-deps chromium`
    - **Start Command**: `gunicorn app:app`
 6. Crear el servicio y esperar el deploy.
 7. Render te va a dar una URL publica (`https://...onrender.com`) para compartir.
@@ -28,3 +28,4 @@ Abrir en navegador: `http://127.0.0.1:5000`
 
 - El frontend tiene el boton **Subir excel** y acepta `.xlsx` y `.csv`.
 - Muestra tabla de sumas y permite descargar el archivo ajustado.
+- **CUIT en ARCA** (descarga desde AFIP con Playwright): en el servidor, definí `CUIT_EN_ARCA_PLAYWRIGHT=1` y usá el build command de arriba con Chromium. Sin eso, el formulario valida credenciales y fechas pero no abre el navegador.
