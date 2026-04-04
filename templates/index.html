@@ -103,10 +103,6 @@
         min-width: 0;
       }
       .tabla-resumen-anual table {
-        border-collapse: collapse;
-        width: 100%;
-        max-width: 100%;
-        table-layout: fixed;
         font-size: clamp(
           0.8125rem,
           calc(
@@ -115,17 +111,51 @@
           1rem
         );
       }
-      .tabla-resumen-anual td {
+      /* Resumen base: concepto más ancho + 5ch + columna numérica (decimales alineados) */
+      .tabla-resumen-anual table.tabla-resumen-base-total {
+        border-collapse: separate;
+        border-spacing: 5ch 0;
+        width: auto;
+        max-width: 100%;
+        table-layout: auto;
+      }
+      .tabla-resumen-anual table.tabla-resumen-base-total td {
+        padding: 4px 0;
+        vertical-align: baseline;
+      }
+      .tabla-resumen-anual table.tabla-resumen-base-total td:first-child {
+        text-align: left;
+        word-break: break-word;
+        hyphens: auto;
+      }
+      .tabla-resumen-anual table.tabla-resumen-base-total td:last-child {
+        text-align: right;
+        white-space: nowrap;
+        font-variant-numeric: tabular-nums;
+        overflow: visible;
+        width: 0.01%;
+      }
+      .tabla-resumen-anual table.tabla-resumen-base-total tr:last-child td {
+        padding-top: 8px;
+      }
+      .tabla-resumen-anual table.tabla-resumen-detalle {
+        border-collapse: collapse;
+        width: 100%;
+        max-width: 100%;
+        table-layout: fixed;
+        margin-top: 0.25rem;
+      }
+      .tabla-resumen-anual table.tabla-resumen-detalle td {
         padding: 4px 8px 4px 0;
         vertical-align: top;
       }
-      .tabla-resumen-anual td:first-child {
+      .tabla-resumen-anual table.tabla-resumen-detalle td:first-child {
         width: 62%;
         word-break: break-word;
         hyphens: auto;
         padding-right: 0.75rem;
       }
-      .tabla-resumen-anual td:last-child {
+      .tabla-resumen-anual table.tabla-resumen-detalle td:last-child {
         width: 38%;
         text-align: right;
         white-space: nowrap;
@@ -294,17 +324,17 @@
             <p class="subtitulo-detalle">
               Solo estas filas suman el <strong>Total (resumen)</strong> (sin IVA desglosado ni Imp. Total).
             </p>
-            <table>
+            <table class="tabla-resumen-base-total">
               <tbody>
                 {% for columna, total in totales_resumen.items() %}
                 <tr>
-                  <td style="padding-right: 12px">{{ columna }}</td>
+                  <td>{{ columna }}</td>
                   <td>{{ "{:,.2f}".format(total) }}</td>
                 </tr>
                 {% endfor %}
                 <tr>
-                  <td style="padding-top: 8px"><strong>Total (resumen)</strong></td>
-                  <td style="padding-top: 8px"><strong>{{ "{:,.2f}".format(suma_total) }}</strong></td>
+                  <td><strong>Total (resumen)</strong></td>
+                  <td><strong>{{ "{:,.2f}".format(suma_total) }}</strong></td>
                 </tr>
               </tbody>
             </table>
@@ -313,11 +343,11 @@
             <h3 class="subtitulo-detalle" style="margin-top: 1rem">
               Detalle por alícuota (no entra en el total de arriba)
             </h3>
-            <table>
+            <table class="tabla-resumen-detalle">
               <tbody>
                 {% for columna, total in totales_detalle.items() %}
                 <tr>
-                  <td style="padding-right: 12px">{{ columna }}</td>
+                  <td>{{ columna }}</td>
                   <td>{{ "{:,.2f}".format(total) }}</td>
                 </tr>
                 {% endfor %}
