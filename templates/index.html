@@ -111,29 +111,32 @@
           1rem
         );
       }
-      /* Resumen base: concepto más ancho + 5ch + columna numérica (decimales alineados) */
+      /*
+        Resumen base: mismo criterio que la columna Concepto ↔ Enero en "Por mes"
+        (padding 0.35em 0.45em + borde 1px entre columnas). Tabla al ancho del contenido
+        para acercar los importes a los conceptos.
+      */
       .tabla-resumen-anual table.tabla-resumen-base-total {
-        border-collapse: separate;
-        border-spacing: 5ch 0;
+        border-collapse: collapse;
         width: auto;
         max-width: 100%;
         table-layout: auto;
       }
       .tabla-resumen-anual table.tabla-resumen-base-total td {
-        padding: 4px 0;
-        vertical-align: baseline;
+        padding: 0.35em 0.45em;
+        vertical-align: top;
       }
       .tabla-resumen-anual table.tabla-resumen-base-total td:first-child {
         text-align: left;
         word-break: break-word;
         hyphens: auto;
+        border-right: 1px solid #ccc;
       }
       .tabla-resumen-anual table.tabla-resumen-base-total td:last-child {
         text-align: right;
         white-space: nowrap;
         font-variant-numeric: tabular-nums;
         overflow: visible;
-        width: 0.01%;
       }
       .tabla-resumen-anual table.tabla-resumen-base-total tr:last-child td {
         padding-top: 8px;
