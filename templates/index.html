@@ -112,27 +112,33 @@
         );
       }
       /*
-        Resumen base: mismo criterio que la columna Concepto ↔ Enero en "Por mes"
-        (padding 0.35em 0.45em + borde 1px entre columnas). Tabla al ancho del contenido
-        para acercar los importes a los conceptos.
+        Resumen base y detalle alícuota: mismo criterio que Concepto ↔ Enero en "Por mes"
+        (padding 0.35em 0.45em + borde 1px entre columnas). Ancho al contenido.
       */
-      .tabla-resumen-anual table.tabla-resumen-base-total {
+      .tabla-resumen-anual table.tabla-resumen-base-total,
+      .tabla-resumen-anual table.tabla-resumen-detalle {
         border-collapse: collapse;
         width: auto;
         max-width: 100%;
         table-layout: auto;
       }
-      .tabla-resumen-anual table.tabla-resumen-base-total td {
+      .tabla-resumen-anual table.tabla-resumen-detalle {
+        margin-top: 0.25rem;
+      }
+      .tabla-resumen-anual table.tabla-resumen-base-total td,
+      .tabla-resumen-anual table.tabla-resumen-detalle td {
         padding: 0.35em 0.45em;
         vertical-align: top;
       }
-      .tabla-resumen-anual table.tabla-resumen-base-total td:first-child {
+      .tabla-resumen-anual table.tabla-resumen-base-total td:first-child,
+      .tabla-resumen-anual table.tabla-resumen-detalle td:first-child {
         text-align: left;
         word-break: break-word;
         hyphens: auto;
         border-right: 1px solid #ccc;
       }
-      .tabla-resumen-anual table.tabla-resumen-base-total td:last-child {
+      .tabla-resumen-anual table.tabla-resumen-base-total td:last-child,
+      .tabla-resumen-anual table.tabla-resumen-detalle td:last-child {
         text-align: right;
         white-space: nowrap;
         font-variant-numeric: tabular-nums;
@@ -140,31 +146,6 @@
       }
       .tabla-resumen-anual table.tabla-resumen-base-total tr:last-child td {
         padding-top: 8px;
-      }
-      .tabla-resumen-anual table.tabla-resumen-detalle {
-        border-collapse: collapse;
-        width: 100%;
-        max-width: 100%;
-        table-layout: fixed;
-        margin-top: 0.25rem;
-      }
-      .tabla-resumen-anual table.tabla-resumen-detalle td {
-        padding: 4px 8px 4px 0;
-        vertical-align: top;
-      }
-      .tabla-resumen-anual table.tabla-resumen-detalle td:first-child {
-        width: 62%;
-        word-break: break-word;
-        hyphens: auto;
-        padding-right: 0.75rem;
-      }
-      .tabla-resumen-anual table.tabla-resumen-detalle td:last-child {
-        width: 38%;
-        text-align: right;
-        white-space: nowrap;
-        font-variant-numeric: tabular-nums;
-        overflow: visible;
-        min-width: 11ch;
       }
       .subtitulo-detalle {
         margin-top: 0.75rem;
