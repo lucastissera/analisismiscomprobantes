@@ -3,6 +3,11 @@ import os
 from pathlib import Path
 from uuid import uuid4
 
+# En local (sin RENDER) habilitar Playwright/AFIP si no definiste la variable.
+# En Render: definí CUIT_EN_ARCA_PLAYWRIGHT=1 en Environment si querés la descarga automática.
+if os.environ.get("RENDER", "").strip().lower() not in ("true", "1", "yes"):
+    os.environ.setdefault("CUIT_EN_ARCA_PLAYWRIGHT", "1")
+
 from flask import Flask, render_template, request, send_file
 
 from cuit_en_arca import ArcaProcesoError, ejecutar_flujo_cuit_en_arca
@@ -19,6 +24,16 @@ from sumar_imp_total import (
 app = Flask(__name__)
 # download_id -> (bytes, nombre_archivo, mimetype)
 DESCARGAS: dict[str, tuple[bytes, str, str]] = {}
+
+
+def _mostrar_ui_cuit_arca() -> bool:
+    v = os.environ.get("CUIT_EN_ARCA_UI", "").strip().lower()
+    return v in ("1", "true", "yes", "on")
+
+
+@app.context_processor
+def _inject_ui_flags():
+    return {"mostrar_cuit_arca_ui": _mostrar_ui_cuit_arca()}
 
 MIME_XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
@@ -104,6 +119,15 @@ def procesar():
 
 @app.post("/cuit-en-arca")
 def cuit_en_arca():
+    if not _mostrar_ui_cuit_arca():
+        return (
+            render_template(
+                "index.html",
+                error="La opción CUIT en ARCA no está habilitada en este entorno.",
+            ),
+            403,
+        )
+
     cred_file = request.files.get("credenciales")
     fecha_desde = (request.form.get("fecha_desde") or "").strip()
     fecha_hasta = (request.form.get("fecha_hasta") or "").strip()
@@ -149,5 +173,12 @@ def cuit_en_arca():
 
 
 if __name__ == "__main__":
+    import threading
+    import webbrowser
+
     puerto = int(os.environ.get("PORT", 5000))
+    url = f"http://127.0.0.1:{puerto}/"
+    print(f"\n  Servidor: {url}\n  (Abrí esa dirección en el navegador si no se abre sola.)\n", flush=True)
+    if os.environ.get("OPEN_BROWSER", "1").strip().lower() in ("1", "true", "yes", "on"):
+        threading.Timer(1.0, lambda: webbrowser.open(url)).start()
     app.run(host="0.0.0.0", port=puerto, debug=False)

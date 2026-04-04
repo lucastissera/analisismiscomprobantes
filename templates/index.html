@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Mis Comprobantes — ARCA y análisis</title>
+    <title>Mis Comprobantes — análisis</title>
     <style>
       body {
         font-family: Arial, sans-serif;
@@ -125,6 +125,7 @@
       {% endif %}
 
       <div class="paneles-superiores">
+        {% if mostrar_cuit_arca_ui %}
         <section class="recuadro recuadro-izq" aria-labelledby="titulo-arca">
           <h2 id="titulo-arca">CUIT en ARCA</h2>
           <p class="subtitulo-detalle" style="margin-top: 0">
@@ -183,6 +184,7 @@
           </p>
           {% endif %}
         </section>
+        {% endif %}
 
         <section class="recuadro recuadro-der" aria-labelledby="titulo-procesador">
           <h1 id="titulo-procesador">Procesador de Comprobantes</h1>
