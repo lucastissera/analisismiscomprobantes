@@ -1,9 +1,18 @@
 <!doctype html>
-<html lang="es" class="modo-oscuro">
+<html lang="es">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Mis Comprobantes — análisis</title>
+    <script>
+      (function () {
+        try {
+          if (localStorage.getItem("tema") === "oscuro") {
+            document.documentElement.classList.add("modo-oscuro");
+          }
+        } catch (e) {}
+      })();
+    </script>
     <style>
       /*
         Referencia: viewport 1920×1080 (ancho útil ~1872px con márgenes).
@@ -281,10 +290,40 @@
       .pie-legal p:last-child {
         margin-bottom: 0;
       }
+      .barra-tema {
+        display: flex;
+        justify-content: flex-end;
+        margin-bottom: 0.75rem;
+      }
+      .btn-tema {
+        margin-top: 0;
+        padding: 0.45rem 0.85rem;
+        font-size: 0.85rem;
+        border: 1px solid var(--border);
+        background: var(--bg-panel);
+        color: var(--text-primary);
+        border-radius: 6px;
+        cursor: pointer;
+      }
+      .btn-tema:hover {
+        filter: brightness(1.06);
+      }
     </style>
   </head>
   <body>
     <div class="pagina">
+      <div class="barra-tema">
+        <button
+          type="button"
+          id="btn-tema"
+          class="btn-tema"
+          aria-pressed="false"
+          aria-label="Activar modo oscuro"
+        >
+          Modo oscuro
+        </button>
+      </div>
+
       {% if error %}
       <div class="error">{{ error }}</div>
       {% endif %}
@@ -459,5 +498,37 @@
         </p>
       </footer>
     </div>
+    <script>
+      (function () {
+        var root = document.documentElement;
+        var btn = document.getElementById("btn-tema");
+        if (!btn) return;
+        var KEY = "tema";
+
+        function sincronizarBoton(oscuro) {
+          btn.setAttribute("aria-pressed", oscuro ? "true" : "false");
+          btn.textContent = oscuro ? "Modo claro" : "Modo oscuro";
+          btn.setAttribute(
+            "aria-label",
+            oscuro ? "Activar modo claro" : "Activar modo oscuro"
+          );
+        }
+
+        function aplicar(oscuro) {
+          if (oscuro) root.classList.add("modo-oscuro");
+          else root.classList.remove("modo-oscuro");
+          try {
+            localStorage.setItem(KEY, oscuro ? "oscuro" : "claro");
+          } catch (e) {}
+          sincronizarBoton(oscuro);
+        }
+
+        sincronizarBoton(root.classList.contains("modo-oscuro"));
+
+        btn.addEventListener("click", function () {
+          aplicar(!root.classList.contains("modo-oscuro"));
+        });
+      })();
+    </script>
   </body>
 </html>
