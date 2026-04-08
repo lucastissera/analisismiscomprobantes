@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="es">
+<html lang="es" class="modo-oscuro">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -13,6 +13,41 @@
       :root {
         --ref-ancho-utile: 1872;
         --margen-h: 48px;
+        --bg-body: #ffffff;
+        --bg-panel: #fafafa;
+        --text-primary: #1a1a1a;
+        --text-secondary: #333;
+        --text-muted: #444;
+        --text-muted-2: #555;
+        --border: #bbb;
+        --border-soft: #ccc;
+        --border-divider: #ddd;
+        --table-header-bg: #f5f5f5;
+        --color-error: #b00020;
+        --color-link: #1565c0;
+        --color-success: #1b5e20;
+        --btn-bg: #111;
+        --btn-text: #fff;
+        --btn-border: #333;
+      }
+      html.modo-oscuro {
+        color-scheme: dark;
+        --bg-body: #0f1014;
+        --bg-panel: #1a1c22;
+        --text-primary: #eceef3;
+        --text-secondary: #dde1ea;
+        --text-muted: #aeb4c0;
+        --text-muted-2: #949aa8;
+        --border: #3d424d;
+        --border-soft: #4a505c;
+        --border-divider: #2c3038;
+        --table-header-bg: #252a33;
+        --color-error: #ff8a95;
+        --color-link: #8ab4ff;
+        --color-success: #81c995;
+        --btn-bg: #3d7dd9;
+        --btn-text: #0c1118;
+        --btn-border: #5b93e8;
       }
       html {
         overflow-x: hidden;
@@ -22,6 +57,18 @@
         font-family: Arial, sans-serif;
         margin: clamp(0.75rem, 2vw, 1.5rem);
         box-sizing: border-box;
+        background: var(--bg-body);
+        color: var(--text-primary);
+      }
+      a {
+        color: var(--color-link);
+      }
+      a:visited {
+        color: var(--color-link);
+      }
+      .mensaje-exito {
+        margin-top: 1rem;
+        color: var(--color-success);
       }
       *,
       *::before,
@@ -37,7 +84,7 @@
         margin: 0 auto;
       }
       .error {
-        color: #b00020;
+        color: var(--color-error);
         margin-bottom: 0.75rem;
       }
       .paneles-superiores {
@@ -48,10 +95,10 @@
       }
       .recuadro {
         flex: 1 1 320px;
-        border: 1px solid #bbb;
+        border: 1px solid var(--border);
         border-radius: 10px;
         padding: 1rem 1.15rem;
-        background: #fafafa;
+        background: var(--bg-panel);
         box-sizing: border-box;
       }
       .recuadro h1,
@@ -65,17 +112,20 @@
       button {
         margin-top: 0.75rem;
         padding: 0.6rem 0.9rem;
-        border: 1px solid #333;
-        background: #111;
-        color: white;
+        border: 1px solid var(--btn-border);
+        background: var(--btn-bg);
+        color: var(--btn-text);
         border-radius: 6px;
         cursor: pointer;
+      }
+      button:hover {
+        filter: brightness(1.08);
       }
       .lista-plantilla {
         margin: 0.75rem 0 0 1rem;
         padding: 0;
         font-size: 0.9rem;
-        color: #333;
+        color: var(--text-secondary);
         line-height: 1.45;
       }
       .lista-plantilla li {
@@ -83,7 +133,7 @@
       }
       .nota-tecnica {
         font-size: 0.82rem;
-        color: #555;
+        color: var(--text-muted-2);
         margin-top: 0.5rem;
       }
       .resumen-filas {
@@ -135,7 +185,7 @@
         text-align: left;
         word-break: break-word;
         hyphens: auto;
-        border-right: 1px solid #ccc;
+        border-right: 1px solid var(--border-soft);
       }
       .tabla-resumen-anual table.tabla-resumen-base-total td:last-child,
       .tabla-resumen-anual table.tabla-resumen-detalle td:last-child {
@@ -150,7 +200,7 @@
       .subtitulo-detalle {
         margin-top: 0.75rem;
         font-size: 0.9rem;
-        color: #444;
+        color: var(--text-muted);
       }
       .tabla-meses-wrap {
         flex: 0 0 auto;
@@ -176,7 +226,7 @@
       }
       .tabla-meses th,
       .tabla-meses td {
-        border: 1px solid #ccc;
+        border: 1px solid var(--border-soft);
         padding: 0.35em 0.45em;
         text-align: right;
         white-space: nowrap;
@@ -196,13 +246,13 @@
         min-width: 11.5ch;
       }
       .tabla-meses th {
-        background: #f5f5f5;
+        background: var(--table-header-bg);
         line-height: 1.15;
       }
       .resultado-comprobantes {
         margin-top: 1.5rem;
         padding-top: 1rem;
-        border-top: 1px solid #ddd;
+        border-top: 1px solid var(--border-divider);
       }
       .resultado-comprobantes > .resumen-filas > .tabla-resumen-anual h2,
       .resultado-comprobantes > .resumen-filas > .tabla-meses-wrap h2 {
@@ -213,6 +263,23 @@
           ),
           1.25rem
         );
+      }
+      .pie-legal {
+        margin-top: 3rem;
+        padding-top: 1.25rem;
+        border-top: 1px solid var(--border-divider);
+        text-align: right;
+        font-size: 0.8rem;
+        line-height: 1.5;
+        color: var(--text-muted-2);
+      }
+      .pie-legal p {
+        margin: 0 0 0.65rem 0;
+        margin-left: auto;
+        max-width: 38rem;
+      }
+      .pie-legal p:last-child {
+        margin-bottom: 0;
       }
     </style>
   </head>
@@ -274,7 +341,7 @@
           </form>
 
           {% if cuit_arca_ok %}
-          <p style="margin-top: 1rem; color: #1b5e20">
+          <p class="mensaje-exito">
             Listo. Descargá el archivo y cargalo en el recuadro de la derecha para analizarlo.
           </p>
           <p>
@@ -381,6 +448,16 @@
         {% endif %}
       </div>
       {% endif %}
+
+      <footer class="pie-legal" role="contentinfo">
+        <p>© 2026 Lucas Tissera Laplagne · Todos los derechos reservados.</p>
+        <p>
+          Herramienta de carácter informativo; no reemplaza asesoramiento financiero, contable,
+          impositivo ni legal. La interpretación y el uso de los datos y resultados son
+          responsabilidad de quien utiliza la aplicación, en ámbito personal o profesional, según
+          corresponda.
+        </p>
+      </footer>
     </div>
   </body>
 </html>
