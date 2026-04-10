@@ -130,6 +130,66 @@
       button:hover {
         filter: brightness(1.08);
       }
+      .input-archivo-oculto {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+      }
+      .zona-soltar-wrap {
+        position: relative;
+        margin-top: 0.5rem;
+      }
+      .zona-soltar-archivo {
+        padding: 1.15rem 1rem;
+        border: 2px dashed var(--border);
+        border-radius: 8px;
+        background: var(--bg-body);
+        text-align: center;
+        transition: border-color 0.15s ease, background 0.15s ease;
+      }
+      .zona-soltar-archivo.zona-soltar-activa {
+        border-color: var(--color-link);
+        background: var(--bg-panel);
+      }
+      .zona-soltar-texto {
+        margin: 0;
+        font-size: 0.9rem;
+        color: var(--text-muted);
+        line-height: 1.5;
+      }
+      .btn-elegir-archivo {
+        margin: 0;
+        padding: 0;
+        border: none;
+        background: none;
+        color: var(--color-link);
+        text-decoration: underline;
+        cursor: pointer;
+        font-size: inherit;
+        font-family: inherit;
+      }
+      .btn-elegir-archivo:hover {
+        filter: none;
+        opacity: 0.9;
+      }
+      .zona-soltar-nombre {
+        margin: 0.65rem 0 0 0;
+        font-size: 0.85rem;
+        color: var(--text-secondary);
+        word-break: break-all;
+      }
+      .zona-soltar-nombre.archivo-seleccionado-vacio {
+        display: none;
+      }
+      .zona-soltar-nombre.zona-soltar-msg-error {
+        color: var(--color-error);
+      }
       .lista-plantilla {
         margin: 0.75rem 0 0 1rem;
         padding: 0;
@@ -453,9 +513,42 @@
             procesarlo y descargarlo ajustado (signos, tipo de cambio, columnas B/C, etc.).
           </p>
 
-          <form method="post" action="/procesar" enctype="multipart/form-data">
-            <label for="excel"><strong>Archivo comprobantes</strong></label><br />
-            <input id="excel" name="excel" type="file" accept=".xlsx,.csv" required />
+          <form
+            method="post"
+            action="/procesar"
+            enctype="multipart/form-data"
+            id="form-procesar-comprobantes"
+          >
+            <label class="etiqueta-archivo" for="excel"><strong>Archivo comprobantes</strong></label>
+            <div class="zona-soltar-wrap">
+              <div
+                class="zona-soltar-archivo"
+                id="zona-soltar-excel"
+                role="group"
+                aria-label="Área para arrastrar archivo o elegir desde la carpeta"
+              >
+                <input
+                  id="excel"
+                  name="excel"
+                  type="file"
+                  accept=".xlsx,.csv"
+                  required
+                  class="input-archivo-oculto"
+                />
+                <p class="zona-soltar-texto" id="ayuda-soltar-excel">
+                  Arrastrá acá un <strong>.xlsx</strong> o <strong>.csv</strong>, o
+                  <button type="button" class="btn-elegir-archivo" id="btn-elegir-excel">
+                    elegí archivo en la carpeta
+                  </button>
+                  .
+                </p>
+                <p
+                  class="zona-soltar-nombre archivo-seleccionado-vacio"
+                  id="nombre-archivo-excel"
+                  aria-live="polite"
+                ></p>
+              </div>
+            </div>
             <br />
             <button type="submit">Cargar y analizar comprobantes</button>
           </form>
@@ -586,6 +679,96 @@
 
         btn.addEventListener("click", function () {
           aplicar(!root.classList.contains("modo-oscuro"));
+        });
+      })();
+    </script>
+    <script>
+      (function () {
+        var zona = document.getElementById("zona-soltar-excel");
+        var input = document.getElementById("excel");
+        var nombre = document.getElementById("nombre-archivo-excel");
+        var btnElegir = document.getElementById("btn-elegir-excel");
+        if (!zona || !input || !nombre) return;
+
+        function esValido(f) {
+          var n = (f && f.name) ? String(f.name).toLowerCase() : "";
+          return n.endsWith(".xlsx") || n.endsWith(".csv");
+        }
+
+        function mostrarNombreArchivo(file) {
+          nombre.classList.remove("archivo-seleccionado-vacio", "zona-soltar-msg-error");
+          nombre.textContent = "Archivo: " + file.name;
+        }
+
+        function mostrarError(msg) {
+          nombre.classList.remove("archivo-seleccionado-vacio");
+          nombre.classList.add("zona-soltar-msg-error");
+          nombre.textContent = msg;
+        }
+
+        function vaciarNombre() {
+          nombre.textContent = "";
+          nombre.classList.add("archivo-seleccionado-vacio");
+          nombre.classList.remove("zona-soltar-msg-error");
+        }
+
+        function asignarArchivoSoltado(file) {
+          var dt = new DataTransfer();
+          dt.items.add(file);
+          input.files = dt.files;
+          mostrarNombreArchivo(file);
+        }
+
+        input.addEventListener("change", function () {
+          if (input.files && input.files.length) {
+            var f = input.files[0];
+            if (esValido(f)) {
+              mostrarNombreArchivo(f);
+            } else {
+              mostrarError("Solo se admiten archivos .xlsx o .csv");
+              input.value = "";
+            }
+          } else {
+            vaciarNombre();
+          }
+        });
+
+        if (btnElegir) {
+          btnElegir.addEventListener("click", function () {
+            input.click();
+          });
+        }
+
+        var nDrag = 0;
+        zona.addEventListener("dragenter", function (e) {
+          e.preventDefault();
+          nDrag++;
+          zona.classList.add("zona-soltar-activa");
+        });
+        zona.addEventListener("dragleave", function (e) {
+          e.preventDefault();
+          nDrag--;
+          if (nDrag <= 0) {
+            nDrag = 0;
+            zona.classList.remove("zona-soltar-activa");
+          }
+        });
+        zona.addEventListener("dragover", function (e) {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "copy";
+        });
+        zona.addEventListener("drop", function (e) {
+          e.preventDefault();
+          nDrag = 0;
+          zona.classList.remove("zona-soltar-activa");
+          var files = e.dataTransfer && e.dataTransfer.files;
+          if (!files || !files.length) return;
+          var f = files[0];
+          if (!esValido(f)) {
+            mostrarError("Solo se admiten archivos .xlsx o .csv");
+            return;
+          }
+          asignarArchivoSoltado(f);
         });
       })();
     </script>
