@@ -18,6 +18,7 @@ import numpy as np
 import pandas as pd
 from openpyxl import load_workbook
 from openpyxl.styles import Font
+from openpyxl.utils import get_column_letter
 
 # Columnas a evaluar: se les aplica signo por Tipo y multiplicación por Tipo Cambio
 COLUMNAS_A_AJUSTAR = [
@@ -614,6 +615,17 @@ def procesar_archivo(
 _FORMATO_NUMERICO_EXCEL = "#,##0.00"
 
 
+def _longitud_texto_celda_excel(val) -> int:
+    """Longitud aproximada del texto mostrado (encabezados y números con miles + 2 decimales)."""
+    if val is None or val == "":
+        return 0
+    if type(val) is bool:
+        return len(str(val))
+    if isinstance(val, (int, float)):
+        return len(f"{float(val):,.2f}")
+    return len(str(val))
+
+
 def escribir_excel_ajustado_con_formato(
     df: pd.DataFrame, destino: io.BytesIO | Path | str
 ) -> None:
@@ -621,6 +633,7 @@ def escribir_excel_ajustado_con_formato(
     Escribe el DataFrame en .xlsx con:
     - Fila 1 (encabezados) en negrita.
     - Celdas numéricas de COLUMNAS_A_AJUSTAR con formato miles + 2 decimales.
+    - Ancho de cada una de esas columnas según el contenido más largo (encabezado o valores).
     - Fila de encabezado fija al desplazarse (freeze panes en fila 1).
     """
     temp = io.BytesIO()
@@ -643,6 +656,15 @@ def escribir_excel_ajustado_con_formato(
             celda = ws.cell(row=fila, column=idx)
             if celda.value is not None and celda.value != "":
                 celda.number_format = _FORMATO_NUMERICO_EXCEL
+
+        max_long = 0
+        for fila in range(1, ws.max_row + 1):
+            max_long = max(
+                max_long,
+                _longitud_texto_celda_excel(ws.cell(row=fila, column=idx).value),
+            )
+        if max_long > 0:
+            ws.column_dimensions[get_column_letter(idx)].width = max_long + 1.5
 
     ws.freeze_panes = "A2"
 
