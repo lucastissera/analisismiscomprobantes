@@ -16,6 +16,7 @@ from sumar_imp_total import (
     COLUMNAS_DETALLE_SIN_RESUMEN,
     COLUMNAS_TOTAL_RESUMEN,
     NOMBRES_MESES,
+    escribir_excel_ajustado_con_formato,
     procesar_archivo,
     total_resumen_pantalla,
     totales_resumen_por_mes,
@@ -89,7 +90,7 @@ def procesar():
         )
 
     salida = io.BytesIO()
-    df_ajustado.to_excel(salida, index=False)
+    escribir_excel_ajustado_con_formato(df_ajustado, salida)
     contenido = salida.getvalue()
 
     nombre_salida = f"{Path(nombre).stem}_ajustado.xlsx"

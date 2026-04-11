@@ -8,12 +8,16 @@ Uso:
   python sumar_imp_total.py <ruta_al_archivo.xlsx> [hoja] [archivo_salida.xlsx]
 """
 
+import io
 import re
 import sys
 import csv
 from pathlib import Path
+
 import numpy as np
 import pandas as pd
+from openpyxl import load_workbook
+from openpyxl.styles import Font
 
 # Columnas a evaluar: se les aplica signo por Tipo y multiplicación por Tipo Cambio
 COLUMNAS_A_AJUSTAR = [
@@ -606,6 +610,51 @@ def procesar_archivo(
     return df_ajustado, resultado, totales_por_mes
 
 
+# Formato numérico: miles y 2 decimales (Excel aplicará separadores según configuración regional)
+_FORMATO_NUMERICO_EXCEL = "#,##0.00"
+
+
+def escribir_excel_ajustado_con_formato(
+    df: pd.DataFrame, destino: io.BytesIO | Path | str
+) -> None:
+    """
+    Escribe el DataFrame en .xlsx con:
+    - Fila 1 (encabezados) en negrita.
+    - Celdas numéricas de COLUMNAS_A_AJUSTAR con formato miles + 2 decimales.
+    - Fila de encabezado fija al desplazarse (freeze panes en fila 1).
+    """
+    temp = io.BytesIO()
+    df.to_excel(temp, index=False, engine="openpyxl")
+    temp.seek(0)
+    wb = load_workbook(temp)
+    ws = wb.active
+    negrita = Font(bold=True)
+
+    for cell in ws[1]:
+        cell.font = negrita
+
+    encabezados = [c.value for c in ws[1]]
+    for nombre_col in COLUMNAS_A_AJUSTAR:
+        try:
+            idx = encabezados.index(nombre_col) + 1
+        except ValueError:
+            continue
+        for fila in range(2, ws.max_row + 1):
+            celda = ws.cell(row=fila, column=idx)
+            if celda.value is not None and celda.value != "":
+                celda.number_format = _FORMATO_NUMERICO_EXCEL
+
+    ws.freeze_panes = "A2"
+
+    if isinstance(destino, io.BytesIO):
+        destino.seek(0)
+        destino.truncate(0)
+        wb.save(destino)
+        destino.seek(0)
+    else:
+        wb.save(destino)
+
+
 def construir_ruta_salida(ruta_excel: str, salida_arg: str | None) -> Path:
     """Devuelve la ruta de salida para el excel ajustado."""
     if salida_arg:
@@ -632,7 +681,7 @@ def main():
     try:
         df_ajustado, totales, _ = procesar_archivo(ruta, hoja, nombre_archivo=ruta)
         ruta_salida = construir_ruta_salida(ruta, salida_arg)
-        df_ajustado.to_excel(ruta_salida, index=False)
+        escribir_excel_ajustado_con_formato(df_ajustado, ruta_salida)
 
         print("Sumas (desde fila 3):")
         for col, total in totales.items():
