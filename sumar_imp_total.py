@@ -656,6 +656,7 @@ def escribir_excel_ajustado_con_formato(
       entre paréntesis, cero como guión).
     - Ancho de cada una de esas columnas según el contenido más largo (encabezado o valores).
     - Fila de encabezado fija al desplazarse (freeze panes en fila 1).
+    - Autofiltro activo sobre la tabla (fila de títulos con filtros en Excel).
     """
     temp = io.BytesIO()
     df.to_excel(temp, index=False, engine="openpyxl")
@@ -688,6 +689,10 @@ def escribir_excel_ajustado_con_formato(
             ws.column_dimensions[get_column_letter(idx)].width = max_long + 1.5
 
     ws.freeze_panes = "A2"
+
+    if ws.max_row >= 1 and ws.max_column >= 1:
+        ultima_col = get_column_letter(ws.max_column)
+        ws.auto_filter.ref = f"A1:{ultima_col}{ws.max_row}"
 
     if isinstance(destino, io.BytesIO):
         destino.seek(0)
