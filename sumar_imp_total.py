@@ -611,18 +611,38 @@ def procesar_archivo(
     return df_ajustado, resultado, totales_por_mes
 
 
-# Formato numérico: miles y 2 decimales (Excel aplicará separadores según configuración regional)
-_FORMATO_NUMERICO_EXCEL = "#,##0.00"
+# Contabilidad (Excel): alineación, negativos entre paréntesis, cero como guión; sin símbolo de moneda.
+# Equivalente a “Contabilidad” sin divisa en la cinta de Excel.
+_FORMATO_CONTABILIDAD_SIN_MONEDA = (
+    r'_ * #,##0.00_ ;_ * (#,##0.00)_ ;_ * "-"??_ ;_ @_ '
+)
+
+_EPS_CERO = 1e-12
+
+
+def _es_cero_numerico(val) -> bool:
+    if val is None or val == "":
+        return False
+    if type(val) is bool:
+        return False
+    if isinstance(val, (int, float)):
+        return abs(float(val)) < _EPS_CERO
+    return False
 
 
 def _longitud_texto_celda_excel(val) -> int:
-    """Longitud aproximada del texto mostrado (encabezados y números con miles + 2 decimales)."""
+    """Longitud aproximada del texto mostrado (encabezados; importes como en contabilidad sin moneda)."""
     if val is None or val == "":
         return 0
     if type(val) is bool:
         return len(str(val))
     if isinstance(val, (int, float)):
-        return len(f"{float(val):,.2f}")
+        if _es_cero_numerico(val):
+            return 3
+        fv = float(val)
+        if fv < 0:
+            return len(f"({abs(fv):,.2f})")
+        return len(f"{fv:,.2f}")
     return len(str(val))
 
 
@@ -632,7 +652,8 @@ def escribir_excel_ajustado_con_formato(
     """
     Escribe el DataFrame en .xlsx con:
     - Fila 1 (encabezados) en negrita.
-    - Celdas numéricas de COLUMNAS_A_AJUSTAR con formato miles + 2 decimales.
+    - Celdas numéricas de COLUMNAS_A_AJUSTAR: formato contabilidad sin moneda (alineación, negativos
+      entre paréntesis, cero como guión).
     - Ancho de cada una de esas columnas según el contenido más largo (encabezado o valores).
     - Fila de encabezado fija al desplazarse (freeze panes en fila 1).
     """
@@ -655,7 +676,7 @@ def escribir_excel_ajustado_con_formato(
         for fila in range(2, ws.max_row + 1):
             celda = ws.cell(row=fila, column=idx)
             if celda.value is not None and celda.value != "":
-                celda.number_format = _FORMATO_NUMERICO_EXCEL
+                celda.number_format = _FORMATO_CONTABILIDAD_SIN_MONEDA
 
         max_long = 0
         for fila in range(1, ws.max_row + 1):
