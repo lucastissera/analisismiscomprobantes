@@ -431,6 +431,31 @@
         white-space: nowrap;
         border: 0;
       }
+      .importacion-dual {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1rem;
+        margin-top: 0.75rem;
+        align-items: stretch;
+      }
+      .importacion-bloque {
+        flex: 1 1 260px;
+        border: 1px solid var(--border-soft);
+        border-radius: 8px;
+        padding: 0.85rem 1rem;
+        background: var(--bg-body);
+        min-width: 0;
+      }
+      .importacion-bloque h3 {
+        margin: 0 0 0.35rem 0;
+        font-size: 1.05rem;
+        font-weight: bold;
+        color: var(--text-primary);
+      }
+      .importacion-bloque .subtitulo-detalle {
+        font-size: 0.88rem;
+        margin-bottom: 0.65rem;
+      }
     </style>
   </head>
   <body>
@@ -563,31 +588,64 @@
             enctype="multipart/form-data"
             id="form-procesar-comprobantes"
           >
-            <label class="etiqueta-archivo" for="excel"><strong>{{ t('file_comprobantes_label') }}</strong></label>
-            <div class="zona-soltar-wrap">
-              <div
-                class="zona-soltar-archivo"
-                id="zona-soltar-excel"
-                role="group"
-                aria-label="{{ t('drop_zone_aria') }}"
-              >
-                <input
-                  id="excel"
-                  name="excel"
-                  type="file"
-                  accept=".xlsx,.csv"
-                  required
-                  class="input-archivo-oculto"
-                />
-                <p class="zona-soltar-texto" id="ayuda-soltar-excel">
-                  {{ t('drop_text_1')|safe }}
-                  <button type="button" class="btn-elegir-archivo" id="btn-elegir-excel">{{ t('choose_file_btn') }}</button>{{ t('drop_text_2') }}
-                </p>
-                <p
-                  class="zona-soltar-nombre archivo-seleccionado-vacio"
-                  id="nombre-archivo-excel"
-                  aria-live="polite"
-                ></p>
+            <div class="importacion-dual">
+              <div class="importacion-bloque" id="bloque-recibidos">
+                <h3>{{ t('processor_section_recibidos') }}</h3>
+                <p class="subtitulo-detalle">{{ t('processor_section_recibidos_help')|safe }}</p>
+                <div class="zona-soltar-wrap">
+                  <div
+                    class="zona-soltar-archivo"
+                    id="zona-soltar-recibidos"
+                    role="group"
+                    aria-label="{{ t('drop_zone_aria') }} — {{ t('processor_section_recibidos') }}"
+                  >
+                    <input
+                      id="excel-recibidos"
+                      name="excel_recibidos"
+                      type="file"
+                      accept=".xlsx,.csv"
+                      class="input-archivo-oculto"
+                    />
+                    <p class="zona-soltar-texto" id="ayuda-soltar-recibidos">
+                      {{ t('drop_text_1')|safe }}
+                      <button type="button" class="btn-elegir-archivo" id="btn-elegir-recibidos">{{ t('choose_file_btn') }}</button>{{ t('drop_text_2') }}
+                    </p>
+                    <p
+                      class="zona-soltar-nombre archivo-seleccionado-vacio"
+                      id="nombre-archivo-recibidos"
+                      aria-live="polite"
+                    ></p>
+                  </div>
+                </div>
+              </div>
+              <div class="importacion-bloque" id="bloque-emitidos">
+                <h3>{{ t('processor_section_emitidos') }}</h3>
+                <p class="subtitulo-detalle">{{ t('processor_section_emitidos_help')|safe }}</p>
+                <div class="zona-soltar-wrap">
+                  <div
+                    class="zona-soltar-archivo"
+                    id="zona-soltar-emitidos"
+                    role="group"
+                    aria-label="{{ t('drop_zone_aria') }} — {{ t('processor_section_emitidos') }}"
+                  >
+                    <input
+                      id="excel-emitidos"
+                      name="excel_emitidos"
+                      type="file"
+                      accept=".xlsx,.csv"
+                      class="input-archivo-oculto"
+                    />
+                    <p class="zona-soltar-texto" id="ayuda-soltar-emitidos">
+                      {{ t('drop_text_1')|safe }}
+                      <button type="button" class="btn-elegir-archivo" id="btn-elegir-emitidos">{{ t('choose_file_btn') }}</button>{{ t('drop_text_2') }}
+                    </p>
+                    <p
+                      class="zona-soltar-nombre archivo-seleccionado-vacio"
+                      id="nombre-archivo-emitidos"
+                      aria-live="polite"
+                    ></p>
+                  </div>
+                </div>
               </div>
             </div>
             <br />
@@ -720,16 +778,15 @@
     </script>
     <script>
       (function () {
-        var zona = document.getElementById("zona-soltar-excel");
-        var input = document.getElementById("excel");
-        var nombre = document.getElementById("nombre-archivo-excel");
-        var btnElegir = document.getElementById("btn-elegir-excel");
-        if (!zona || !input || !nombre) return;
-
-        function esValido(f) {
-          var n = (f && f.name) ? String(f.name).toLowerCase() : "";
-          return n.endsWith(".xlsx") || n.endsWith(".csv");
-        }
+        var inputR = document.getElementById("excel-recibidos");
+        var inputE = document.getElementById("excel-emitidos");
+        var zonaR = document.getElementById("zona-soltar-recibidos");
+        var zonaE = document.getElementById("zona-soltar-emitidos");
+        var nombreR = document.getElementById("nombre-archivo-recibidos");
+        var nombreE = document.getElementById("nombre-archivo-emitidos");
+        var btnR = document.getElementById("btn-elegir-recibidos");
+        var btnE = document.getElementById("btn-elegir-emitidos");
+        if (!inputR || !inputE || !nombreR || !nombreE || !zonaR || !zonaE) return;
 
         var I18N = {};
         try {
@@ -737,81 +794,103 @@
           if (i18el && i18el.textContent) I18N = JSON.parse(i18el.textContent);
         } catch (e) {}
 
-        function mostrarNombreArchivo(file) {
-          nombre.classList.remove("archivo-seleccionado-vacio", "zona-soltar-msg-error");
-          nombre.textContent = (I18N.file_prefix || "") + file.name;
+        function esValido(f) {
+          var n = f && f.name ? String(f.name).toLowerCase() : "";
+          return n.endsWith(".xlsx") || n.endsWith(".csv");
         }
 
-        function mostrarError(msg) {
-          nombre.classList.remove("archivo-seleccionado-vacio");
-          nombre.classList.add("zona-soltar-msg-error");
-          nombre.textContent = msg;
+        function vaciarNombre(el) {
+          el.textContent = "";
+          el.classList.add("archivo-seleccionado-vacio");
+          el.classList.remove("zona-soltar-msg-error");
         }
 
-        function vaciarNombre() {
-          nombre.textContent = "";
-          nombre.classList.add("archivo-seleccionado-vacio");
-          nombre.classList.remove("zona-soltar-msg-error");
+        function mostrarNombreArchivo(el, file) {
+          el.classList.remove("archivo-seleccionado-vacio", "zona-soltar-msg-error");
+          el.textContent = (I18N.file_prefix || "") + file.name;
         }
 
-        function asignarArchivoSoltado(file) {
+        function mostrarError(el, msg) {
+          el.classList.remove("archivo-seleccionado-vacio");
+          el.classList.add("zona-soltar-msg-error");
+          el.textContent = msg;
+        }
+
+        function limpiarOtro(ladoActivo) {
+          if (ladoActivo === "recibidos") {
+            inputE.value = "";
+            vaciarNombre(nombreE);
+          } else {
+            inputR.value = "";
+            vaciarNombre(nombreR);
+          }
+        }
+
+        function asignarArchivo(input, nombreEl, file) {
           var dt = new DataTransfer();
           dt.items.add(file);
           input.files = dt.files;
-          mostrarNombreArchivo(file);
+          mostrarNombreArchivo(nombreEl, file);
         }
 
-        input.addEventListener("change", function () {
-          if (input.files && input.files.length) {
-            var f = input.files[0];
-            if (esValido(f)) {
-              mostrarNombreArchivo(f);
+        function wireZona(zona, input, nombreEl, btnElegir, otroLado) {
+          input.addEventListener("change", function () {
+            if (input.files && input.files.length) {
+              var f = input.files[0];
+              if (esValido(f)) {
+                limpiarOtro(otroLado);
+                mostrarNombreArchivo(nombreEl, f);
+              } else {
+                mostrarError(nombreEl, I18N.err_invalid_ext || "");
+                input.value = "";
+              }
             } else {
-              mostrarError(I18N.err_invalid_ext || "");
-              input.value = "";
+              vaciarNombre(nombreEl);
             }
-          } else {
-            vaciarNombre();
-          }
-        });
+          });
 
-        if (btnElegir) {
-          btnElegir.addEventListener("click", function () {
-            input.click();
+          if (btnElegir) {
+            btnElegir.addEventListener("click", function () {
+              input.click();
+            });
+          }
+
+          var nDrag = 0;
+          zona.addEventListener("dragenter", function (e) {
+            e.preventDefault();
+            nDrag++;
+            zona.classList.add("zona-soltar-activa");
+          });
+          zona.addEventListener("dragleave", function (e) {
+            e.preventDefault();
+            nDrag--;
+            if (nDrag <= 0) {
+              nDrag = 0;
+              zona.classList.remove("zona-soltar-activa");
+            }
+          });
+          zona.addEventListener("dragover", function (e) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = "copy";
+          });
+          zona.addEventListener("drop", function (e) {
+            e.preventDefault();
+            nDrag = 0;
+            zona.classList.remove("zona-soltar-activa");
+            var files = e.dataTransfer && e.dataTransfer.files;
+            if (!files || !files.length) return;
+            var f = files[0];
+            if (!esValido(f)) {
+              mostrarError(nombreEl, I18N.err_invalid_ext || "");
+              return;
+            }
+            limpiarOtro(otroLado);
+            asignarArchivo(input, nombreEl, f);
           });
         }
 
-        var nDrag = 0;
-        zona.addEventListener("dragenter", function (e) {
-          e.preventDefault();
-          nDrag++;
-          zona.classList.add("zona-soltar-activa");
-        });
-        zona.addEventListener("dragleave", function (e) {
-          e.preventDefault();
-          nDrag--;
-          if (nDrag <= 0) {
-            nDrag = 0;
-            zona.classList.remove("zona-soltar-activa");
-          }
-        });
-        zona.addEventListener("dragover", function (e) {
-          e.preventDefault();
-          e.dataTransfer.dropEffect = "copy";
-        });
-        zona.addEventListener("drop", function (e) {
-          e.preventDefault();
-          nDrag = 0;
-          zona.classList.remove("zona-soltar-activa");
-          var files = e.dataTransfer && e.dataTransfer.files;
-          if (!files || !files.length) return;
-          var f = files[0];
-          if (!esValido(f)) {
-            mostrarError(I18N.err_invalid_ext || "");
-            return;
-          }
-          asignarArchivoSoltado(f);
-        });
+        wireZona(zonaR, inputR, nombreR, btnR, "recibidos");
+        wireZona(zonaE, inputE, nombreE, btnE, "emitidos");
       })();
     </script>
   </body>

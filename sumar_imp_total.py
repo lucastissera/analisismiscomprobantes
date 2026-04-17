@@ -72,6 +72,17 @@ CODIGOS_IMP_TOTAL_EN_NETO_IVA_0 = frozenset(
     )
 )
 
+# Códigos AFIP típicos de comprobantes con letra B (excl. redirección Imp.→Neto IVA 0% si emitidos).
+CODIGOS_LETRA_B_AFIP = frozenset(
+    {
+        6,
+        7,
+        8,
+        9,
+        10,
+    }
+)
+
 NOMBRES_MESES = [
     "enero",
     "febrero",
@@ -269,6 +280,27 @@ def serie_codigo_tipo_comprobante(serie_tipo: pd.Series) -> pd.Series:
         dig = t.loc[vac].str.extract(r"^(\d+)", expand=False)
         codigo.loc[vac] = pd.to_numeric(dig, errors="coerce")
     return codigo
+
+
+def serie_es_comprobante_letra_b(
+    codigo_num: pd.Series, serie_tipo: pd.Series
+) -> pd.Series:
+    """
+    Indica filas de comprobantes con letra B (AFIP).
+    Usado en emitidos: esas filas no redirigen Imp. Total a Neto Grav. IVA 0%;
+    el neto y el IVA siguen las columnas del archivo (con signo y tipo de cambio).
+    """
+    por_codigo = codigo_num.isin(CODIGOS_LETRA_B_AFIP)
+    t = serie_tipo.astype(str)
+    up = t.str.upper()
+    por_texto = (
+        up.str.contains(r"FACTURA\s+B", regex=True, na=False)
+        | up.str.contains(r"NOTA\s+DE\s+D[EÉ]BITO\s+B", regex=True, na=False)
+        | up.str.contains(r"NOTA\s+DE\s+CR[EÉ]DITO\s+B", regex=True, na=False)
+        | up.str.contains(r"RECIBO\s+B", regex=True, na=False)
+        | up.str.contains(r"TIQUE.*FACTURA\s+B", regex=True, na=False)
+    )
+    return por_codigo | por_texto
 
 
 def _serie_fecha_emision_a_datetime(serie: pd.Series) -> pd.Series:
@@ -562,6 +594,7 @@ def procesar_archivo(
     hoja: str | int = 0,
     nombre_archivo: str | None = None,
     ui_lang: str = "en",
+    emitidos: bool = False,
 ) -> tuple[pd.DataFrame, dict[str, float], dict[int, dict[str, float]]]:
     """
     Lee un archivo Excel y devuelve la sumatoria de las columnas indicadas.
@@ -570,6 +603,9 @@ def procesar_archivo(
     Comprobantes CODIGOS_IMP_TOTAL_EN_NETO_IVA_0 (B/C y afines), en .xlsx y .csv: el importe
     suele estar solo en Imp. Total; se refleja en Neto Grav. IVA 0% y en Imp. Total (misma base
     antes de signo NC y tipo de cambio), Neto Gravado Total en 0 y el resto de columnas ajustadas en 0.
+
+    Si emitidos=True: los comprobantes con letra B no aplican esa redirección (neto e IVA en sus
+    columnas); los tipo C siguen la misma lógica que en recibidos. Siempre se aplica tipo de cambio.
 
     Args:
         ruta_excel: Ruta al archivo .xlsx
@@ -612,9 +648,12 @@ def procesar_archivo(
     es_nota_credito = codigo_num.isin(CODIGOS_NOTA_CREDITO)
     signo = (1 - 2 * es_nota_credito.astype(int)).reset_index(drop=True)
 
-    es_imp_en_neto_iva_0 = codigo_num.isin(CODIGOS_IMP_TOTAL_EN_NETO_IVA_0).reset_index(
-        drop=True
-    )
+    base_imp_neto_iva_0 = codigo_num.isin(CODIGOS_IMP_TOTAL_EN_NETO_IVA_0)
+    if emitidos:
+        es_letra_b = serie_es_comprobante_letra_b(codigo_num, df["Tipo"])
+        es_imp_en_neto_iva_0 = (base_imp_neto_iva_0 & ~es_letra_b).reset_index(drop=True)
+    else:
+        es_imp_en_neto_iva_0 = base_imp_neto_iva_0.reset_index(drop=True)
 
     # Factor de conversión por fila: vacíos/no numéricos se toman como 0 solo para cálculo
     tipo_cambio = serie_a_float_importe(df["Tipo Cambio"]).fillna(0).reset_index(

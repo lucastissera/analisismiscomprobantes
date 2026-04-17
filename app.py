@@ -104,10 +104,17 @@ def descargar(download_id: str):
 @app.post("/procesar")
 def procesar():
     lg = normalize_lang(session.get("lang"))
-    archivo = request.files.get("excel")
-    if not archivo or archivo.filename == "":
+    f_rec = request.files.get("excel_recibidos")
+    f_emit = request.files.get("excel_emitidos")
+    has_r = bool(f_rec and (f_rec.filename or "").strip())
+    has_e = bool(f_emit and (f_emit.filename or "").strip())
+    if not has_r and not has_e:
         return render_template("index.html", error=tr(lg, "err_select_file"))
+    if has_r and has_e:
+        return render_template("index.html", error=tr(lg, "err_two_files"))
 
+    emitidos = bool(has_e)
+    archivo = f_emit if emitidos else f_rec
     nombre = Path(archivo.filename).name
     if not (nombre.lower().endswith(".xlsx") or nombre.lower().endswith(".csv")):
         return render_template("index.html", error=tr(lg, "err_only_xlsx_csv"))
@@ -116,7 +123,11 @@ def procesar():
         datos = archivo.read()
         buffer = io.BytesIO(datos)
         df_ajustado, totales, totales_por_mes = procesar_archivo(
-            buffer, 0, nombre_archivo=nombre, ui_lang=lg
+            buffer,
+            0,
+            nombre_archivo=nombre,
+            ui_lang=lg,
+            emitidos=emitidos,
         )
     except ValueError as exc:
         return render_template("index.html", error=str(exc))
