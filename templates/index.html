@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="es">
+<html lang="{{ current_lang }}">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Mis Comprobantes — análisis</title>
+    <title>{{ t('page_title') }}</title>
     <script>
       (function () {
         try {
@@ -353,7 +353,6 @@
       .barra-tema {
         display: flex;
         justify-content: flex-end;
-        margin-bottom: 0.75rem;
       }
       .btn-tema {
         margin-top: 0;
@@ -390,17 +389,80 @@
       html.modo-oscuro .btn-tema .icono-sol {
         display: block;
       }
+      .barra-superior {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 0.5rem;
+        margin-bottom: 0.75rem;
+      }
+      .selector-idioma-wrap {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+      }
+      .selector-idioma-icono {
+        display: inline-flex;
+        color: var(--text-muted);
+        flex-shrink: 0;
+      }
+      .selector-idioma-icono svg {
+        width: 1.15rem;
+        height: 1.15rem;
+      }
+      .select-idioma {
+        font-size: 0.85rem;
+        padding: 0.38rem 0.55rem;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: var(--bg-panel);
+        color: var(--text-primary);
+        cursor: pointer;
+        max-width: 11rem;
+      }
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+      }
     </style>
   </head>
   <body>
     <div class="pagina">
-      <div class="barra-tema">
+      <div class="barra-superior">
+        <div class="selector-idioma-wrap">
+          <span class="selector-idioma-icono" aria-hidden="true">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10" />
+              <line x1="2" y1="12" x2="22" y2="12" />
+              <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+            </svg>
+          </span>
+          <label for="select-idioma" class="sr-only">{{ t('lang_select_aria') }}</label>
+          <select
+            id="select-idioma"
+            class="select-idioma"
+            autocomplete="off"
+            onchange="location.href='/set-lang/'+encodeURIComponent(this.value)+'?next='+encodeURIComponent(window.location.pathname+window.location.search);"
+          >
+            {% for code in langs %}
+            <option value="{{ code }}" {% if code == current_lang %}selected{% endif %}>{{ lang_labels[code] }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="barra-tema">
         <button
           type="button"
           id="btn-tema"
           class="btn-tema"
           aria-pressed="false"
-          aria-label="Activar modo oscuro"
+          aria-label="{{ t('aria_theme_dark') }}"
         >
           <span class="btn-tema-iconos" aria-hidden="true">
             <svg
@@ -436,8 +498,9 @@
               <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
             </svg>
           </span>
-          <span class="btn-tema-texto">Modo oscuro</span>
+          <span class="btn-tema-texto">{{ t('theme_dark') }}</span>
         </button>
+        </div>
       </div>
 
       {% if error %}
@@ -447,34 +510,19 @@
       <div class="paneles-superiores">
         {% if mostrar_cuit_arca_ui %}
         <section class="recuadro recuadro-izq" aria-labelledby="titulo-arca">
-          <h2 id="titulo-arca">CUIT en ARCA</h2>
-          <p class="subtitulo-detalle" style="margin-top: 0">
-            Descarga desde AFIP (Mis Comprobantes → Emitidos). Cargá una planilla
-            <strong>.xlsx</strong> con esta estructura:
-          </p>
+          <h2 id="titulo-arca">{{ t('arca_title') }}</h2>
+          <p class="subtitulo-detalle" style="margin-top: 0">{{ t('arca_intro')|safe }}</p>
           <ul class="lista-plantilla">
-            <li>
-              <strong>Fila 1:</strong> títulos en las celdas <strong>A1, B1, C1 y D1</strong>
-              (CUIT representante, Clave fiscal, CUIT representado, Rango Fechas).
-            </li>
-            <li>
-              <strong>Desde la fila 2:</strong> columnas <strong>A</strong> y <strong>C</strong> solo
-              números, <strong>11 dígitos</strong> (CUIT sin guiones); columna <strong>B</strong> en
-              formato <strong>texto</strong> (acepta todos los caracteres); columna <strong>D</strong> en
-              formato <code>dd/mm/yyyy - dd/mm/yyyy</code>.
-            </li>
+            <li>{{ t('arca_li1')|safe }}</li>
+            <li>{{ t('arca_li2')|safe }}</li>
           </ul>
-          <p class="nota-tecnica">
-            Rango máximo un año. Si <strong>D</strong> trae las fechas, los campos de abajo son opcionales.
-            Automatización: <code>CUIT_EN_ARCA_PLAYWRIGHT=1</code> y
-            <code>playwright install chromium</code>.
-          </p>
+          <p class="nota-tecnica">{{ t('arca_nota')|safe }}</p>
 
           <form method="post" action="/cuit-en-arca" enctype="multipart/form-data">
-            <label for="credenciales"><strong>Planilla Excel (.xlsx)</strong></label><br />
+            <label for="credenciales"><strong>{{ t('arca_label_file') }}</strong></label><br />
             <input id="credenciales" name="credenciales" type="file" accept=".xlsx" required />
             <br /><br />
-            <label for="fecha_desde">Fecha desde (si no está en columna D)</label><br />
+            <label for="fecha_desde">{{ t('arca_label_desde') }}</label><br />
             <input
               id="fecha_desde"
               name="fecha_desde"
@@ -483,7 +531,7 @@
               style="max-width: 12rem"
             />
             <br /><br />
-            <label for="fecha_hasta">Fecha hasta (si no está en columna D)</label><br />
+            <label for="fecha_hasta">{{ t('arca_label_hasta') }}</label><br />
             <input
               id="fecha_hasta"
               name="fecha_hasta"
@@ -492,31 +540,22 @@
               style="max-width: 12rem"
             />
             <br />
-            <button type="submit">Cargar planilla y ejecutar descarga ARCA</button>
+            <button type="submit">{{ t('arca_submit') }}</button>
           </form>
 
           {% if cuit_arca_ok %}
-          <p class="mensaje-exito">
-            Listo. Descargá el archivo y cargalo en el recuadro de la derecha para analizarlo.
-          </p>
+          <p class="mensaje-exito">{{ t('msg_arca_ok') }}</p>
           <p>
-            <a href="/descargar/{{ cuit_arca_download_id }}">Descargar {{ cuit_arca_nombre }}</a>
+            <a href="/descargar/{{ cuit_arca_download_id }}">{{ t('download_link', name=cuit_arca_nombre) }}</a>
           </p>
           {% endif %}
         </section>
         {% endif %}
 
         <section class="recuadro recuadro-der" aria-labelledby="titulo-procesador">
-          <h1 id="titulo-procesador">Procesador de Comprobantes</h1>
-          <p class="subtitulo-detalle" style="margin-top: 0">
-            Subí un archivo <strong>.xlsx</strong> o <strong>.csv</strong> de Mis Comprobantes para
-            procesarlo y descargarlo ajustado.
-          </p>
-          <p class="subtitulo-detalle">
-            Las notas de crédito aparecerán con signo negativo, y los comprobantes B y C estarán
-            contemplados en la columna &quot;<strong>Neto Grav. IVA 0%</strong>&quot;. Además, los comprobantes
-            en moneda extranjera ya estarán convertidos a pesos argentinos.
-          </p>
+          <h1 id="titulo-procesador">{{ t('processor_title') }}</h1>
+          <p class="subtitulo-detalle" style="margin-top: 0">{{ t('processor_intro_1')|safe }}</p>
+          <p class="subtitulo-detalle">{{ t('processor_intro_2')|safe }}</p>
 
           <form
             method="post"
@@ -524,13 +563,13 @@
             enctype="multipart/form-data"
             id="form-procesar-comprobantes"
           >
-            <label class="etiqueta-archivo" for="excel"><strong>Archivo comprobantes</strong></label>
+            <label class="etiqueta-archivo" for="excel"><strong>{{ t('file_comprobantes_label') }}</strong></label>
             <div class="zona-soltar-wrap">
               <div
                 class="zona-soltar-archivo"
                 id="zona-soltar-excel"
                 role="group"
-                aria-label="Área para arrastrar archivo o elegir desde la carpeta"
+                aria-label="{{ t('drop_zone_aria') }}"
               >
                 <input
                   id="excel"
@@ -541,11 +580,8 @@
                   class="input-archivo-oculto"
                 />
                 <p class="zona-soltar-texto" id="ayuda-soltar-excel">
-                  Arrastrá acá un <strong>.xlsx</strong> o <strong>.csv</strong>, o
-                  <button type="button" class="btn-elegir-archivo" id="btn-elegir-excel">
-                    elegí archivo en la carpeta
-                  </button>
-                  .
+                  {{ t('drop_text_1')|safe }}
+                  <button type="button" class="btn-elegir-archivo" id="btn-elegir-excel">{{ t('choose_file_btn') }}</button>{{ t('drop_text_2') }}
                 </p>
                 <p
                   class="zona-soltar-nombre archivo-seleccionado-vacio"
@@ -555,7 +591,7 @@
               </div>
             </div>
             <br />
-            <button type="submit">Cargar y analizar comprobantes</button>
+            <button type="submit">{{ t('submit_analyze') }}</button>
           </form>
         </section>
       </div>
@@ -564,10 +600,8 @@
       <div class="resultado-comprobantes">
         <div class="resumen-filas">
           <div class="tabla-resumen-anual">
-            <h2>Resumen (base del total)</h2>
-            <p class="subtitulo-detalle">
-              Solo estas filas suman el <strong>Total (resumen)</strong> (sin IVA desglosado ni Imp. Total).
-            </p>
+            <h2>{{ t('resumen_h2') }}</h2>
+            <p class="subtitulo-detalle">{{ t('resumen_help')|safe }}</p>
             <table class="tabla-resumen-base-total">
               <tbody>
                 {% for columna, total in totales_resumen.items() %}
@@ -577,16 +611,14 @@
                 </tr>
                 {% endfor %}
                 <tr>
-                  <td><strong>Total (resumen)</strong></td>
+                  <td><strong>{{ t('total_resumen_label') }}</strong></td>
                   <td><strong>{{ "{:,.2f}".format(suma_total) }}</strong></td>
                 </tr>
               </tbody>
             </table>
 
             {% if totales_detalle %}
-            <h3 class="subtitulo-detalle" style="margin-top: 1rem">
-              Detalle por alícuota (no entra en el total de arriba)
-            </h3>
+            <h3 class="subtitulo-detalle" style="margin-top: 1rem">{{ t('detalle_alicuota_h3') }}</h3>
             <table class="tabla-resumen-detalle">
               <tbody>
                 {% for columna, total in totales_detalle.items() %}
@@ -601,14 +633,12 @@
           </div>
 
           <div class="tabla-meses-wrap">
-            <h2>Por mes</h2>
-            <p class="subtitulo-detalle">
-              Mismos conceptos que el resumen anual; columna mes según fecha de emisión.
-            </p>
+            <h2>{{ t('por_mes_h2') }}</h2>
+            <p class="subtitulo-detalle">{{ t('por_mes_help') }}</p>
             <table class="tabla-meses">
               <thead>
                 <tr>
-                  <th>Concepto</th>
+                  <th>{{ t('concepto_th') }}</th>
                   {% for mes in meses_idx %}
                   <th>{{ nombres_meses[mes - 1]|capitalize }}</th>
                   {% endfor %}
@@ -624,7 +654,7 @@
                 </tr>
                 {% endfor %}
                 <tr>
-                  <td><strong>Total (resumen)</strong></td>
+                  <td><strong>{{ t('total_resumen_label') }}</strong></td>
                   {% for mes in meses_idx %}
                   <td><strong>{{ "{:,.2f}".format(resumen_total_mes[mes]) }}</strong></td>
                   {% endfor %}
@@ -636,24 +666,25 @@
 
         {% if download_id %}
         <p style="margin-top: 12px;">
-          <a href="/descargar/{{ download_id }}">Descargar archivo ajustado ({{ nombre_salida }})</a>
+          <a href="/descargar/{{ download_id }}">{{ t('download_adjusted', name=nombre_salida) }}</a>
         </p>
         {% endif %}
       </div>
       {% endif %}
 
       <footer class="pie-legal" role="contentinfo">
-        <p>© 2026 Lucas Tissera Laplagne · Todos los derechos reservados.</p>
-        <p>
-          Herramienta de carácter informativo; no reemplaza asesoramiento financiero, contable,
-          impositivo ni legal. La interpretación y el uso de los datos y resultados son
-          responsabilidad de quien utiliza la aplicación, en ámbito personal o profesional, según
-          corresponda.
-        </p>
+        <p>{{ t('footer_copyright') }}</p>
+        <p>{{ t('footer_disclaimer') }}</p>
       </footer>
     </div>
+    <script type="application/json" id="i18n-js">{{ i18n_js | tojson }}</script>
     <script>
       (function () {
+        var I18N = {};
+        try {
+          var el = document.getElementById("i18n-js");
+          if (el && el.textContent) I18N = JSON.parse(el.textContent);
+        } catch (e) {}
         var root = document.documentElement;
         var btn = document.getElementById("btn-tema");
         if (!btn) return;
@@ -663,11 +694,11 @@
         function sincronizarBoton(oscuro) {
           btn.setAttribute("aria-pressed", oscuro ? "true" : "false");
           if (textoBtn) {
-            textoBtn.textContent = oscuro ? "Modo claro" : "Modo oscuro";
+            textoBtn.textContent = oscuro ? I18N.theme_light : I18N.theme_dark;
           }
           btn.setAttribute(
             "aria-label",
-            oscuro ? "Activar modo claro" : "Activar modo oscuro"
+            oscuro ? I18N.aria_theme_light : I18N.aria_theme_dark
           );
         }
 
@@ -700,9 +731,15 @@
           return n.endsWith(".xlsx") || n.endsWith(".csv");
         }
 
+        var I18N = {};
+        try {
+          var i18el = document.getElementById("i18n-js");
+          if (i18el && i18el.textContent) I18N = JSON.parse(i18el.textContent);
+        } catch (e) {}
+
         function mostrarNombreArchivo(file) {
           nombre.classList.remove("archivo-seleccionado-vacio", "zona-soltar-msg-error");
-          nombre.textContent = "Archivo: " + file.name;
+          nombre.textContent = (I18N.file_prefix || "") + file.name;
         }
 
         function mostrarError(msg) {
@@ -730,7 +767,7 @@
             if (esValido(f)) {
               mostrarNombreArchivo(f);
             } else {
-              mostrarError("Solo se admiten archivos .xlsx o .csv");
+              mostrarError(I18N.err_invalid_ext || "");
               input.value = "";
             }
           } else {
@@ -770,7 +807,7 @@
           if (!files || !files.length) return;
           var f = files[0];
           if (!esValido(f)) {
-            mostrarError("Solo se admiten archivos .xlsx o .csv");
+            mostrarError(I18N.err_invalid_ext || "");
             return;
           }
           asignarArchivoSoltado(f);

@@ -8,14 +8,21 @@ from uuid import uuid4
 if os.environ.get("RENDER", "").strip().lower() not in ("true", "1", "yes"):
     os.environ.setdefault("CUIT_EN_ARCA_PLAYWRIGHT", "1")
 
-from flask import Flask, render_template, request, send_file
+from flask import Flask, redirect, render_template, request, send_file, session, url_for
 
 from cuit_en_arca import ArcaProcesoError, ejecutar_flujo_cuit_en_arca
+from i18n import (
+    LANG_LABELS,
+    MESES,
+    SUPPORTED_LANGS,
+    normalize_lang,
+    tr,
+    tr_js_bundle,
+)
 from sumar_imp_total import (
     COLUMNAS_A_AJUSTAR,
     COLUMNAS_DETALLE_SIN_RESUMEN,
     COLUMNAS_TOTAL_RESUMEN,
-    NOMBRES_MESES,
     escribir_excel_ajustado_con_formato,
     procesar_archivo,
     total_resumen_pantalla,
@@ -23,6 +30,7 @@ from sumar_imp_total import (
 )
 
 app = Flask(__name__)
+app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-cambiar-en-produccion")
 # download_id -> (bytes, nombre_archivo, mimetype)
 DESCARGAS: dict[str, tuple[bytes, str, str]] = {}
 
@@ -35,6 +43,32 @@ def _mostrar_ui_cuit_arca() -> bool:
 @app.context_processor
 def _inject_ui_flags():
     return {"mostrar_cuit_arca_ui": _mostrar_ui_cuit_arca()}
+
+
+@app.context_processor
+def _inject_i18n():
+    lg = normalize_lang(session.get("lang"))
+
+    def t(key: str, **kwargs):
+        return tr(lg, key, **kwargs)
+
+    return {
+        "t": t,
+        "current_lang": lg,
+        "nombres_meses": MESES[lg],
+        "langs": SUPPORTED_LANGS,
+        "lang_labels": LANG_LABELS,
+        "i18n_js": tr_js_bundle(lg),
+    }
+
+
+@app.get("/set-lang/<code>")
+def set_lang(code: str):
+    session["lang"] = normalize_lang(code)
+    nxt = request.args.get("next") or "/"
+    if isinstance(nxt, str) and nxt.startswith("/") and not nxt.startswith("//"):
+        return redirect(nxt)
+    return redirect(url_for("index"))
 
 MIME_XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
@@ -55,7 +89,8 @@ def index():
 def descargar(download_id: str):
     item = DESCARGAS.get(download_id)
     if not item:
-        return render_template("index.html", error="El archivo a descargar ya no está disponible.")
+        lg = normalize_lang(session.get("lang"))
+        return render_template("index.html", error=tr(lg, "err_download_gone"))
 
     contenido, nombre_salida, mime = item
     return send_file(
@@ -68,25 +103,26 @@ def descargar(download_id: str):
 
 @app.post("/procesar")
 def procesar():
+    lg = normalize_lang(session.get("lang"))
     archivo = request.files.get("excel")
     if not archivo or archivo.filename == "":
-        return render_template("index.html", error="Debes seleccionar un archivo .xlsx o .csv")
+        return render_template("index.html", error=tr(lg, "err_select_file"))
 
     nombre = Path(archivo.filename).name
     if not (nombre.lower().endswith(".xlsx") or nombre.lower().endswith(".csv")):
-        return render_template("index.html", error="Solo se permiten archivos .xlsx o .csv")
+        return render_template("index.html", error=tr(lg, "err_only_xlsx_csv"))
 
     try:
         datos = archivo.read()
         buffer = io.BytesIO(datos)
         df_ajustado, totales, totales_por_mes = procesar_archivo(
-            buffer, 0, nombre_archivo=nombre
+            buffer, 0, nombre_archivo=nombre, ui_lang=lg
         )
     except ValueError as exc:
         return render_template("index.html", error=str(exc))
     except Exception as exc:  # fallback para errores no esperados
         return render_template(
-            "index.html", error=f"Ocurrió un error al procesar el archivo: {exc}"
+            "index.html", error=tr(lg, "err_processing", exc=exc)
         )
 
     salida = io.BytesIO()
@@ -110,7 +146,6 @@ def procesar():
         columnas_orden=COLUMNAS_A_AJUSTAR,
         suma_total=round(total_resumen_pantalla(totales), 2),
         totales_por_mes=totales_por_mes,
-        nombres_meses=NOMBRES_MESES,
         meses_idx=meses_idx,
         resumen_total_mes=resumen_total_mes,
         download_id=download_id,
@@ -120,11 +155,12 @@ def procesar():
 
 @app.post("/cuit-en-arca")
 def cuit_en_arca():
+    lg = normalize_lang(session.get("lang"))
     if not _mostrar_ui_cuit_arca():
         return (
             render_template(
                 "index.html",
-                error="La opción CUIT en ARCA no está habilitada en este entorno.",
+                error=tr(lg, "err_arca_disabled"),
             ),
             403,
         )
@@ -136,12 +172,12 @@ def cuit_en_arca():
     if not cred_file or cred_file.filename == "":
         return render_template(
             "index.html",
-            error="CUIT en ARCA: seleccioná el archivo Excel de credenciales (.xlsx).",
+            error=tr(lg, "err_arca_cred_missing"),
         )
     if not Path(cred_file.filename).name.lower().endswith(".xlsx"):
         return render_template(
             "index.html",
-            error="CUIT en ARCA: el archivo de credenciales debe ser .xlsx.",
+            error=tr(lg, "err_arca_xlsx"),
         )
     try:
         buf = io.BytesIO(cred_file.read())
@@ -155,7 +191,7 @@ def cuit_en_arca():
     except Exception as exc:
         return render_template(
             "index.html",
-            error=f"CUIT en ARCA: error inesperado ({exc}).",
+            error=tr(lg, "err_arca_unexpected", exc=exc),
         )
 
     nombre_out = Path(nombre_sug).name if nombre_sug else "mis_comprobantes_descarga.xlsx"

@@ -398,7 +398,12 @@ def _totales_anuales_y_por_mes(
     return resultado, totales_por_mes
 
 
-def _mejor_dataframe_excel(entrada, hoja: str | int) -> pd.DataFrame:
+def _mensaje_procesamiento(ui_lang: str, *, es: str, en: str) -> str:
+    """Errores de validación: español solo si la UI es es; en cualquier otro idioma, inglés."""
+    return es if ui_lang == "es" else en
+
+
+def _mejor_dataframe_excel(entrada, hoja: str | int, ui_lang: str = "en") -> pd.DataFrame:
     """
     Prueba header=0 y header=1 en .xlsx y elige el que tenga todas las columnas requeridas.
     Si ninguno las tiene todas, elige el que menos falte (misma lógica que CSV vs xlsx).
@@ -419,7 +424,13 @@ def _mejor_dataframe_excel(entrada, hoja: str | int) -> pd.DataFrame:
         opciones.append((faltan, header_row, cand))
 
     if not opciones:
-        raise ValueError("No se pudo leer el archivo Excel.")
+        raise ValueError(
+            _mensaje_procesamiento(
+                ui_lang,
+                es="No se pudo leer el archivo Excel.",
+                en="Could not read the Excel file.",
+            )
+        )
 
     opciones.sort(key=lambda t: (t[0], t[1]))
     mejor_faltan, _hdr, mejor_df = opciones[0]
@@ -427,13 +438,27 @@ def _mejor_dataframe_excel(entrada, hoja: str | int) -> pd.DataFrame:
         nombres = ", ".join(mejor_df.columns.astype(str))
         faltantes = list(req - set(mejor_df.columns))
         raise ValueError(
-            f"No se encontraron las columnas: {faltantes}. "
-            f"Columnas en el archivo: {nombres}"
+            _mensaje_procesamiento(
+                ui_lang,
+                es=(
+                    f"No se encontraron las columnas: {faltantes}. "
+                    f"Columnas en el archivo: {nombres}"
+                ),
+                en=(
+                    f"Missing columns: {faltantes}. "
+                    f"Columns in the file: {nombres}"
+                ),
+            )
         )
     return mejor_df
 
 
-def leer_tabla(entrada, hoja: str | int = 0, nombre_archivo: str | None = None) -> pd.DataFrame:
+def leer_tabla(
+    entrada,
+    hoja: str | int = 0,
+    nombre_archivo: str | None = None,
+    ui_lang: str = "en",
+) -> pd.DataFrame:
     """
     Lee un .xlsx o .csv con formato:
     - .xlsx: fila 1 encabezado general, fila 2 encabezados de columnas, fila 3+ datos
@@ -518,16 +543,25 @@ def leer_tabla(entrada, hoja: str | int = 0, nombre_archivo: str | None = None) 
             if primer_df is not None:
                 df = primer_df
             else:
-                raise ValueError("No se pudo leer el CSV con un formato válido.")
+                raise ValueError(
+                    _mensaje_procesamiento(
+                        ui_lang,
+                        es="No se pudo leer el CSV con un formato válido.",
+                        en="Could not read the CSV in a valid format.",
+                    )
+                )
     else:
-        df = _mejor_dataframe_excel(entrada, hoja)
+        df = _mejor_dataframe_excel(entrada, hoja, ui_lang=ui_lang)
 
     df.columns = df.columns.astype(str).str.strip()
     return normalizar_columnas(df)
 
 
 def procesar_archivo(
-    ruta_excel: str, hoja: str | int = 0, nombre_archivo: str | None = None
+    ruta_excel: str,
+    hoja: str | int = 0,
+    nombre_archivo: str | None = None,
+    ui_lang: str = "en",
 ) -> tuple[pd.DataFrame, dict[str, float], dict[int, dict[str, float]]]:
     """
     Lee un archivo Excel y devuelve la sumatoria de las columnas indicadas.
@@ -548,7 +582,9 @@ def procesar_archivo(
         - Diccionario mes (1-12) -> totales por columna (mismas claves que totales).
     """
     # header=1: la fila 2 del archivo (índice 1) tiene los nombres de columnas; datos desde fila 3
-    df = leer_tabla(ruta_excel, hoja=hoja, nombre_archivo=nombre_archivo)
+    df = leer_tabla(
+        ruta_excel, hoja=hoja, nombre_archivo=nombre_archivo, ui_lang=ui_lang
+    )
 
     # Comprobar que existan todas las columnas necesarias
     columnas_requeridas = COLUMNAS_A_AJUSTAR + ["Tipo", "Tipo Cambio", "Fecha Emisión"]
@@ -556,8 +592,17 @@ def procesar_archivo(
     if faltantes:
         nombres = ", ".join(df.columns.astype(str))
         raise ValueError(
-            f"No se encontraron las columnas: {faltantes}. "
-            f"Columnas en el archivo: {nombres}"
+            _mensaje_procesamiento(
+                ui_lang,
+                es=(
+                    f"No se encontraron las columnas: {faltantes}. "
+                    f"Columnas en el archivo: {nombres}"
+                ),
+                en=(
+                    f"Missing columns: {faltantes}. "
+                    f"Columns in the file: {nombres}"
+                ),
+            )
         )
 
     df = df.reset_index(drop=True)
