@@ -665,12 +665,12 @@
                 {% for columna, total in totales_resumen.items() %}
                 <tr>
                   <td>{{ columna }}</td>
-                  <td>{{ "{:,.2f}".format(total) }}</td>
+                  <td>{{ total|fmt_ar }}</td>
                 </tr>
                 {% endfor %}
                 <tr>
                   <td><strong>{{ t('total_resumen_label') }}</strong></td>
-                  <td><strong>{{ "{:,.2f}".format(suma_total) }}</strong></td>
+                  <td><strong>{{ suma_total|fmt_ar }}</strong></td>
                 </tr>
               </tbody>
             </table>
@@ -682,7 +682,7 @@
                 {% for columna, total in totales_detalle.items() %}
                 <tr>
                   <td>{{ columna }}</td>
-                  <td>{{ "{:,.2f}".format(total) }}</td>
+                  <td>{{ total|fmt_ar }}</td>
                 </tr>
                 {% endfor %}
               </tbody>
@@ -707,14 +707,14 @@
                 <tr>
                   <td>{{ columna }}</td>
                   {% for mes in meses_idx %}
-                  <td>{{ "{:,.2f}".format(totales_por_mes[mes][columna]) }}</td>
+                  <td>{{ totales_por_mes[mes][columna]|fmt_ar }}</td>
                   {% endfor %}
                 </tr>
                 {% endfor %}
                 <tr>
                   <td><strong>{{ t('total_resumen_label') }}</strong></td>
                   {% for mes in meses_idx %}
-                  <td><strong>{{ "{:,.2f}".format(resumen_total_mes[mes]) }}</strong></td>
+                  <td><strong>{{ resumen_total_mes[mes]|fmt_ar }}</strong></td>
                   {% endfor %}
                 </tr>
               </tbody>

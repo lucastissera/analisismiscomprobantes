@@ -35,6 +35,34 @@ app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-cambiar-en-produccion"
 DESCARGAS: dict[str, tuple[bytes, str, str]] = {}
 
 
+def _entero_miles_punto(n: int) -> str:
+    s = str(abs(int(n)))
+    if len(s) <= 3:
+        return s if n >= 0 else "-" + s
+    partes = []
+    while s:
+        partes.append(s[-3:])
+        s = s[:-3]
+    out = ".".join(reversed(partes))
+    return out if n >= 0 else "-" + out
+
+
+@app.template_filter("fmt_ar")
+def fmt_num_ar_argentina(value: object) -> str:
+    """Miles con punto, decimales con coma (visualización en pantalla)."""
+    try:
+        x = float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return str(value)
+    neg = x < 0
+    x = abs(x)
+    centavos = int(round(x * 100 + 1e-9))
+    ent = centavos // 100
+    dec = centavos % 100
+    body = f"{_entero_miles_punto(ent)},{dec:02d}"
+    return f"-{body}" if neg else body
+
+
 def _mostrar_ui_cuit_arca() -> bool:
     v = os.environ.get("CUIT_EN_ARCA_UI", "").strip().lower()
     return v in ("1", "true", "yes", "on")
