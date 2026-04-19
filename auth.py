@@ -1,23 +1,30 @@
 """Usuarios y contraseñas desde JSON (texto plano).
 
-- Por defecto: ``auth_users.json`` junto a este archivo (no versionar: ver ``.gitignore``).
-- En el servidor: definir la variable de entorno ``AUTH_USERS_PATH`` con la ruta absoluta
-  al JSON que solo exista en disco del host (o volumen), sin pasar por Git.
-- Si no hay archivo o está vacío: ``AUTH_ADMIN_USER`` y ``AUTH_ADMIN_PASSWORD`` (variables de entorno).
+Archivo principal: **auth_users.json** (misma carpeta que este módulo). Podés editarlo,
+commitearlo y subirlo al servidor; el login usa siempre ese archivo salvo override.
 
-Copiá ``auth_users.example.json`` → ``auth_users.json`` en cada entorno y editá usuarios/claves.
+Opcional: variable ``AUTH_USERS_PATH`` con otra ruta absoluta al JSON.
+
+Si el archivo no existe o ``users`` está vacío: ``AUTH_ADMIN_USER`` y ``AUTH_ADMIN_PASSWORD``
+en el entorno (p. ej. solo en el servidor sin archivo).
 """
 
 from __future__ import annotations
 
 import json
+import logging
 import os
 from pathlib import Path
 from urllib.parse import quote
 
 _AUTH_DIR = Path(__file__).resolve().parent
-_override = (os.environ.get("AUTH_USERS_PATH") or "").strip()
-AUTH_USERS_FILE = Path(_override) if _override else _AUTH_DIR / "auth_users.json"
+_LOG = logging.getLogger(__name__)
+
+
+def _auth_users_file() -> Path:
+    """Ruta al JSON; se evalúa en cada lectura para respetar env y .env cargado antes del import."""
+    override = (os.environ.get("AUTH_USERS_PATH") or "").strip()
+    return Path(override) if override else _AUTH_DIR / "auth_users.json"
 
 
 def _normalizar_usuarios(raw: dict) -> dict[str, str]:
@@ -32,15 +39,18 @@ def _normalizar_usuarios(raw: dict) -> dict[str, str]:
 
 def load_users() -> dict[str, str]:
     """Devuelve mapa usuario -> contraseña (texto plano, editable en el archivo)."""
-    if AUTH_USERS_FILE.is_file():
+    path = _auth_users_file()
+    if path.is_file():
         try:
-            with open(AUTH_USERS_FILE, encoding="utf-8-sig") as f:
+            with open(path, encoding="utf-8-sig") as f:
                 data = json.load(f)
             got = _normalizar_usuarios(data.get("users") or {})
             if got:
                 return got
-        except (OSError, json.JSONDecodeError):
-            pass
+        except json.JSONDecodeError as exc:
+            _LOG.warning("auth_users.json inválido en %s: %s", path, exc)
+        except OSError as exc:
+            _LOG.warning("No se pudo leer %s: %s", path, exc)
     # Sin archivo o JSON vacío (p. ej. deploy sin subir claves): credenciales por entorno
     u = (os.environ.get("AUTH_ADMIN_USER") or "").strip()
     p = (os.environ.get("AUTH_ADMIN_PASSWORD") or "").strip()

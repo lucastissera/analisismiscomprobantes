@@ -5,6 +5,14 @@ from datetime import timedelta
 from pathlib import Path
 from uuid import uuid4
 
+_APP_ROOT = Path(__file__).resolve().parent
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv(_APP_ROOT / ".env")
+except ImportError:
+    pass
+
 # En local (sin RENDER) habilitar Playwright/AFIP si no definiste la variable.
 # En Render: definí CUIT_EN_ARCA_PLAYWRIGHT=1 en Environment si querés la descarga automática.
 if os.environ.get("RENDER", "").strip().lower() not in ("true", "1", "yes"):

@@ -1,6 +1,3 @@
-# Credenciales (no subir al repositorio)
-auth_users.json
-
 # Variables locales (SECRET_KEY, rutas, etc.)
 .env
 .env.local
