@@ -1,5 +1,7 @@
 import io
 import os
+import time
+from datetime import timedelta
 from pathlib import Path
 from uuid import uuid4
 
@@ -10,6 +12,7 @@ if os.environ.get("RENDER", "").strip().lower() not in ("true", "1", "yes"):
 
 from flask import Flask, redirect, render_template, request, send_file, session, url_for
 
+from auth import verify_credentials, whatsapp_new_user_url
 from cuit_en_arca import ArcaProcesoError, ejecutar_flujo_cuit_en_arca
 from i18n import (
     LANG_LABELS,
@@ -31,8 +34,52 @@ from sumar_imp_total import (
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-cambiar-en-produccion")
+app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(minutes=30)
+app.config["SESSION_REFRESH_EACH_REQUEST"] = True
 # download_id -> (bytes, nombre_archivo, mimetype)
 DESCARGAS: dict[str, tuple[bytes, str, str]] = {}
+
+# Inactividad: sin peticiones al servidor durante este tiempo → cerrar sesión.
+# Cada petición (refresco, nueva pestaña con la misma app, navegación) renueva el plazo.
+_SESSION_IDLE_SEC = 30 * 60
+
+
+def _safe_internal_path(target: str | None) -> str:
+    """Solo rutas relativas del mismo sitio (evita redirecciones abiertas)."""
+    if not target or not isinstance(target, str):
+        return url_for("index")
+    t = target.strip()
+    if t.startswith("/") and not t.startswith("//"):
+        return t
+    return url_for("index")
+
+
+@app.before_request
+def _session_idle_and_login():
+    if request.endpoint == "static" or (
+        request.path and request.path.startswith("/static")
+    ):
+        return None
+
+    now = time.time()
+    username = session.get("user")
+    if username:
+        last = session.get("last_activity")
+        if last is None:
+            session["last_activity"] = now
+            session.modified = True
+        elif (now - float(last)) > _SESSION_IDLE_SEC:
+            session.pop("user", None)
+            session.pop("last_activity", None)
+        else:
+            session["last_activity"] = now
+            session.modified = True
+
+    if request.endpoint in ("login", "set_lang", None):
+        return None
+    if session.get("user"):
+        return None
+    return redirect(url_for("login", next=request.path))
 
 
 def _entero_miles_punto(n: int) -> str:
@@ -83,6 +130,7 @@ def _inject_i18n():
     return {
         "t": t,
         "current_lang": lg,
+        "current_user": session.get("user"),
         "nombres_meses": MESES[lg],
         "langs": SUPPORTED_LANGS,
         "lang_labels": LANG_LABELS,
@@ -97,6 +145,41 @@ def set_lang(code: str):
     if isinstance(nxt, str) and nxt.startswith("/") and not nxt.startswith("//"):
         return redirect(nxt)
     return redirect(url_for("index"))
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if session.get("user"):
+        return redirect(_safe_internal_path(request.args.get("next")))
+    if request.method == "POST":
+        next_val = (request.form.get("next") or "").strip()
+        user = (request.form.get("usuario") or "").strip()
+        pwd = request.form.get("password") or ""
+        if verify_credentials(user, pwd):
+            session["user"] = user
+            session["last_activity"] = time.time()
+            session.permanent = True
+            session.modified = True
+            return redirect(_safe_internal_path(next_val or request.args.get("next")))
+        return render_template(
+            "login.html",
+            login_error=True,
+            next=next_val,
+            whatsapp_url=whatsapp_new_user_url(),
+        )
+    next_val = (request.args.get("next") or "").strip()
+    return render_template(
+        "login.html",
+        next=next_val,
+        whatsapp_url=whatsapp_new_user_url(),
+    )
+
+
+@app.get("/logout")
+def logout():
+    session.pop("user", None)
+    session.pop("last_activity", None)
+    return redirect(url_for("login"))
 
 MIME_XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 

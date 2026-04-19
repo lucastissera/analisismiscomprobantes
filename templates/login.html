@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="{{ current_lang }}">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{{ t('login_page_title') }}</title>
+    <script>
+      (function () {
+        try {
+          if (localStorage.getItem("tema") === "oscuro") {
+            document.documentElement.classList.add("modo-oscuro");
+          }
+        } catch (e) {}
+      })();
+    </script>
+    <style>
+      :root {
+        --bg-body: #ffffff;
+        --bg-panel: #fafafa;
+        --text-primary: #1a1a1a;
+        --text-muted: #444;
+        --border: #bbb;
+        --color-error: #b00020;
+        --color-link: #1565c0;
+        --btn-bg: #111;
+        --btn-text: #fff;
+        --btn-border: #333;
+      }
+      html.modo-oscuro {
+        color-scheme: dark;
+        --bg-body: #0f1014;
+        --bg-panel: #1a1c22;
+        --text-primary: #eceef3;
+        --text-muted: #aeb4c0;
+        --border: #3d424d;
+        --color-error: #ff8a95;
+        --color-link: #8ab4ff;
+        --btn-bg: #3d7dd9;
+        --btn-text: #0c1118;
+        --btn-border: #5b93e8;
+      }
+      body {
+        font-family: Arial, sans-serif;
+        margin: clamp(0.75rem, 2vw, 1.5rem);
+        background: var(--bg-body);
+        color: var(--text-primary);
+      }
+      a {
+        color: var(--color-link);
+      }
+      .pagina {
+        max-width: 420px;
+        margin: 0 auto;
+      }
+      .barra-superior {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        gap: 0.5rem;
+        margin-bottom: 1.25rem;
+      }
+      .select-idioma {
+        font-size: 0.85rem;
+        padding: 0.38rem 0.55rem;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: var(--bg-panel);
+        color: var(--text-primary);
+        cursor: pointer;
+      }
+      .login-card {
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 1.25rem 1.35rem;
+        background: var(--bg-panel);
+      }
+      .login-card h1 {
+        margin: 0 0 1rem 0;
+        font-size: 1.35rem;
+      }
+      .login-field {
+        margin-bottom: 0.9rem;
+      }
+      .login-field label {
+        display: block;
+        margin-bottom: 0.25rem;
+        font-weight: bold;
+        font-size: 0.9rem;
+      }
+      .login-field input[type="text"],
+      .login-field input[type="password"] {
+        width: 100%;
+        padding: 0.45rem 0.5rem;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        font-size: 1rem;
+        box-sizing: border-box;
+        background: var(--bg-body);
+        color: var(--text-primary);
+      }
+      .login-actions {
+        margin-top: 1rem;
+      }
+      .login-actions button {
+        padding: 0.55rem 1rem;
+        border: 1px solid var(--btn-border);
+        background: var(--btn-bg);
+        color: var(--btn-text);
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 1rem;
+      }
+      .login-actions button:hover {
+        filter: brightness(1.08);
+      }
+      .error {
+        color: var(--color-error);
+        margin-bottom: 0.75rem;
+        font-size: 0.95rem;
+      }
+      .login-nuevo {
+        margin-top: 1rem;
+        font-size: 0.92rem;
+        color: var(--text-muted);
+      }
+      .login-nuevo a {
+        font-weight: bold;
+      }
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="pagina">
+      <div class="barra-superior">
+        <label for="select-idioma-login" class="sr-only">{{ t('lang_select_aria') }}</label>
+        <select
+          id="select-idioma-login"
+          class="select-idioma"
+          autocomplete="off"
+          onchange="location.href='/set-lang/'+encodeURIComponent(this.value)+'?next='+encodeURIComponent('/login'+window.location.search);"
+        >
+          {% for code in langs %}
+          <option value="{{ code }}" {% if code == current_lang %}selected{% endif %}>{{ lang_labels[code] }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="login-card">
+        <h1>{{ t('login_heading') }}</h1>
+        {% if login_error %}
+        <p class="error" role="alert">{{ t('login_error_bad') }}</p>
+        {% endif %}
+        <form method="post" action="{{ url_for('login') }}" autocomplete="on">
+          <input type="hidden" name="next" value="{{ next or '' }}" />
+          <div class="login-field">
+            <label for="usuario">{{ t('login_user_label') }}</label>
+            <input id="usuario" name="usuario" type="text" autocomplete="username" required />
+          </div>
+          <div class="login-field">
+            <label for="password">{{ t('login_password_label') }}</label>
+            <input id="password" name="password" type="password" autocomplete="current-password" required />
+          </div>
+          <div class="login-actions">
+            <button type="submit">{{ t('login_submit') }}</button>
+          </div>
+        </form>
+        <p class="login-nuevo">
+          <a
+            href="{{ whatsapp_url }}"
+            target="_blank"
+            rel="noopener noreferrer"
+            >{{ t('login_new_user') }}</a
+          >
+        </p>
+      </div>
+    </div>
+  </body>
+</html>

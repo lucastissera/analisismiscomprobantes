@@ -396,6 +396,15 @@
         gap: 0.5rem;
         margin-bottom: 0.75rem;
       }
+      .barra-logout {
+        font-size: 0.9rem;
+      }
+      .barra-logout a {
+        text-decoration: none;
+      }
+      .barra-logout a:hover {
+        text-decoration: underline;
+      }
       .selector-idioma-wrap {
         display: inline-flex;
         align-items: center;
@@ -525,6 +534,9 @@
           </span>
           <span class="btn-tema-texto">{{ t('theme_dark') }}</span>
         </button>
+        </div>
+        <div class="barra-logout">
+          <a href="{{ url_for('logout') }}">{{ t('logout_link') }}</a>
         </div>
       </div>
 

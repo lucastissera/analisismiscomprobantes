@@ -1,0 +1,15 @@
+# Credenciales (no subir al repositorio)
+auth_users.json
+
+# Variables locales (SECRET_KEY, rutas, etc.)
+.env
+.env.local
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.Python
+.venv/
+venv/
+env/
