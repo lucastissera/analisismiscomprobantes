@@ -558,10 +558,12 @@ def leer_tabla(
 
 
 def procesar_archivo(
-    ruta_excel: str,
+    ruta_excel: str | io.BytesIO,
     hoja: str | int = 0,
     nombre_archivo: str | None = None,
     ui_lang: str = "en",
+    *,
+    emitidos: bool = False,
 ) -> tuple[pd.DataFrame, dict[str, float], dict[int, dict[str, float]]]:
     """
     Lee un archivo Excel y devuelve la sumatoria de las columnas indicadas.
@@ -572,8 +574,9 @@ def procesar_archivo(
     antes de signo NC y tipo de cambio), Neto Gravado Total en 0 y el resto de columnas ajustadas en 0.
 
     Args:
-        ruta_excel: Ruta al archivo .xlsx
+        ruta_excel: Ruta al archivo .xlsx o buffer legible por pandas (p. ej. BytesIO)
         hoja: Nombre o índice de la hoja (0 por defecto)
+        emitidos: True si el archivo es export de comprobantes emitidos (misma lógica que recibidos).
 
     Returns:
         Tuple con:
@@ -581,6 +584,7 @@ def procesar_archivo(
         - Diccionario con el nombre de cada columna y su suma.
         - Diccionario mes (1-12) -> totales por columna (mismas claves que totales).
     """
+    _ = emitidos  # misma lógica ARCA para recibidos y emitidos; flag reservado para la app web
     # header=1: la fila 2 del archivo (índice 1) tiene los nombres de columnas; datos desde fila 3
     df = leer_tabla(
         ruta_excel, hoja=hoja, nombre_archivo=nombre_archivo, ui_lang=ui_lang
