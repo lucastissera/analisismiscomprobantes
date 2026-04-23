@@ -64,11 +64,32 @@ CODIGOS_NOTA_CREDITO = {
 }
 
 # Tipos B/C (y afines): Imp. Total → Neto Grav. IVA 0% (no Neto Gravado Total). Columna Tipo.
+# Comprobantes recibidos: se aplica a todo este conjunto (export ARCA suele concentrar el total en Imp. Total).
 CODIGOS_IMP_TOTAL_EN_NETO_IVA_0 = frozenset(
     (
         6, 7, 8, 9, 10, 11, 12, 13, 15, 16, 18, 19, 20, 21, 25, 26, 28, 29,
         40, 41, 42, 43, 44, 46, 47, 61, 64, 82, 83, 90, 91, 109, 110, 111,
         113, 114, 116, 117, 206, 207, 208, 211, 212, 213,
+    )
+)
+
+# Solo clase C (AFIP Libro IVA / RG 4290 y afines; FCE MiPyME C = 211–213).
+# Comprobantes emitidos: únicamente estos replican Imp. Total en Neto Grav. IVA 0% y anulan el resto
+# de bases imponibles en esa fila; el resto de tipos usan las columnas del archivo (con signo NC).
+CODIGOS_IMP_TOTAL_EN_NETO_IVA_0_SOLO_C = frozenset(
+    (
+        11,
+        12,
+        13,  # Factura / ND / NC C
+        15,
+        16,  # Recibo C, nota venta al contado C
+        109,
+        111,
+        114,
+        117,  # Tique C, tique factura C, tique NC/ND C
+        211,
+        212,
+        213,  # FCE electrónica MiPyME C
     )
 )
 
@@ -569,14 +590,17 @@ def procesar_archivo(
     Lee un archivo Excel y devuelve la sumatoria de las columnas indicadas.
     Fila 1 = encabezado general, fila 2 = encabezados de columnas, datos desde fila 3.
     Las filas con Tipo = nota de crédito se suman en valor negativo.
-    Comprobantes CODIGOS_IMP_TOTAL_EN_NETO_IVA_0 (B/C y afines), en .xlsx y .csv: el importe
-    suele estar solo en Imp. Total; se refleja en Neto Grav. IVA 0% y en Imp. Total (misma base
-    antes de signo NC y tipo de cambio), Neto Gravado Total en 0 y el resto de columnas ajustadas en 0.
+    Comprobantes recibidos (emitidos=False): tipos en CODIGOS_IMP_TOTAL_EN_NETO_IVA_0 (B/C y afines):
+    el importe suele estar solo en Imp. Total; se refleja en Neto Grav. IVA 0% y en Imp. Total,
+    Neto Gravado Total en 0 y el resto de columnas numéricas de esa fila en 0 (antes de signo NC y TC).
+
+    Comprobantes emitidos (emitidos=True): solo los de clase C (CODIGOS_IMP_TOTAL_EN_NETO_IVA_0_SOLO_C)
+    siguen esa regla; el resto suma con los valores de cada columna del archivo (Factura A/B, FCE A/B, etc.).
 
     Args:
         ruta_excel: Ruta al archivo .xlsx o buffer legible por pandas (p. ej. BytesIO)
         hoja: Nombre o índice de la hoja (0 por defecto)
-        emitidos: True si el archivo es export de comprobantes emitidos (misma lógica que recibidos).
+        emitidos: True si el archivo es export de comprobantes emitidos.
 
     Returns:
         Tuple con:
@@ -584,7 +608,6 @@ def procesar_archivo(
         - Diccionario con el nombre de cada columna y su suma.
         - Diccionario mes (1-12) -> totales por columna (mismas claves que totales).
     """
-    _ = emitidos  # misma lógica ARCA para recibidos y emitidos; flag reservado para la app web
     # header=1: la fila 2 del archivo (índice 1) tiene los nombres de columnas; datos desde fila 3
     df = leer_tabla(
         ruta_excel, hoja=hoja, nombre_archivo=nombre_archivo, ui_lang=ui_lang
@@ -616,9 +639,12 @@ def procesar_archivo(
     es_nota_credito = codigo_num.isin(CODIGOS_NOTA_CREDITO)
     signo = (1 - 2 * es_nota_credito.astype(int)).reset_index(drop=True)
 
-    es_imp_en_neto_iva_0 = codigo_num.isin(CODIGOS_IMP_TOTAL_EN_NETO_IVA_0).reset_index(
-        drop=True
+    codigos_neto_iva_0 = (
+        CODIGOS_IMP_TOTAL_EN_NETO_IVA_0_SOLO_C
+        if emitidos
+        else CODIGOS_IMP_TOTAL_EN_NETO_IVA_0
     )
+    es_imp_en_neto_iva_0 = codigo_num.isin(codigos_neto_iva_0).reset_index(drop=True)
 
     # Factor de conversión por fila: vacíos/no numéricos se toman como 0 solo para cálculo
     tipo_cambio = serie_a_float_importe(df["Tipo Cambio"]).fillna(0).reset_index(
