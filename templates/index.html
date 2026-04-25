@@ -265,7 +265,7 @@
         border-top: 1px solid var(--border-divider);
         margin-top: 0;
       }
-      .resultado-acordeon-cuerpo .tabla-resumen-anual > h2:first-of-type,
+      .resultado-acordeon-cuerpo .resumen-bloque > h2:first-of-type,
       .resultado-acordeon-cuerpo .tabla-meses-wrap > h2 {
         margin-top: 0.85rem;
       }
@@ -274,6 +274,39 @@
         width: 100%;
         max-width: 100%;
         min-width: 0;
+      }
+      .resumen-fila-superior {
+        display: flex;
+        flex-direction: row;
+        flex-wrap: wrap;
+        align-items: flex-start;
+        gap: 1.25rem;
+        width: 100%;
+        min-width: 0;
+      }
+      .resumen-bloque {
+        flex: 1 1 200px;
+        min-width: 0;
+      }
+      .resumen-sep-gruesa {
+        flex: 0 0 5px;
+        width: 5px;
+        align-self: stretch;
+        min-height: 3.5rem;
+        background: var(--border);
+        border-radius: 3px;
+      }
+      @media (max-width: 640px) {
+        .resumen-fila-superior {
+          flex-direction: column;
+          gap: 1rem;
+        }
+        .resumen-sep-gruesa {
+          width: 100%;
+          height: 5px;
+          min-height: 5px;
+          flex: 0 0 5px;
+        }
       }
       .tabla-resumen-anual table {
         font-size: clamp(
@@ -285,8 +318,8 @@
         );
       }
       /*
-        Resumen base y detalle alícuota: mismo criterio que Concepto ↔ Enero en "Por mes"
-        (padding 0.35em 0.45em + borde 1px entre columnas). Ancho al contenido.
+        Resumen base y detalle alícuota: mismo criterio que Concepto ↔ Enero (columna mensual)
+        (padding 0.35em 0.45em + borde 1px entre columnas de cada tabla). Ancho al contenido.
       */
       .tabla-resumen-anual table.tabla-resumen-base-total,
       .tabla-resumen-anual table.tabla-resumen-detalle {
@@ -726,36 +759,41 @@
           <details class="resultado-acordeon" id="acordeon-resumen" open>
             <summary class="resultado-acordeon-cabecera">{{ t('acordeon_resumen') }}</summary>
             <div class="resultado-acordeon-cuerpo">
-              <div class="tabla-resumen-anual">
-                <h2>{{ t('resumen_h2') }}</h2>
-                <p class="subtitulo-detalle">{{ t('resumen_help')|safe }}</p>
-                <table class="tabla-resumen-base-total">
-                  <tbody>
-                    {% for columna, total in totales_resumen.items() %}
-                    <tr>
-                      <td>{{ columna }}</td>
-                      <td>{{ total|fmt_ar }}</td>
-                    </tr>
-                    {% endfor %}
-                    <tr>
-                      <td><strong>{{ t('total_resumen_label') }}</strong></td>
-                      <td><strong>{{ suma_total|fmt_ar }}</strong></td>
-                    </tr>
-                  </tbody>
-                </table>
+              <div class="tabla-resumen-anual resumen-fila-superior">
+                <div class="resumen-bloque resumen-bloque-base">
+                  <h2>{{ t('resumen_h2') }}</h2>
+                  <p class="subtitulo-detalle">{{ t('resumen_help')|safe }}</p>
+                  <table class="tabla-resumen-base-total">
+                    <tbody>
+                      {% for columna, total in totales_resumen.items() %}
+                      <tr>
+                        <td>{{ columna }}</td>
+                        <td>{{ total|fmt_ar }}</td>
+                      </tr>
+                      {% endfor %}
+                      <tr>
+                        <td><strong>{{ t('total_resumen_label') }}</strong></td>
+                        <td><strong>{{ suma_total|fmt_ar }}</strong></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
 
                 {% if totales_detalle %}
-                <h3 class="subtitulo-detalle" style="margin-top: 1rem">{{ t('detalle_alicuota_h3') }}</h3>
-                <table class="tabla-resumen-detalle">
-                  <tbody>
-                    {% for columna, total in totales_detalle.items() %}
-                    <tr>
-                      <td>{{ columna }}</td>
-                      <td>{{ total|fmt_ar }}</td>
-                    </tr>
-                    {% endfor %}
-                  </tbody>
-                </table>
+                <div class="resumen-sep-gruesa" role="presentation" aria-hidden="true"></div>
+                <div class="resumen-bloque resumen-bloque-alicuota">
+                  <h2>{{ t('detalle_alicuota_h3') }}</h2>
+                  <table class="tabla-resumen-detalle">
+                    <tbody>
+                      {% for columna, total in totales_detalle.items() %}
+                      <tr>
+                        <td>{{ columna }}</td>
+                        <td>{{ total|fmt_ar }}</td>
+                      </tr>
+                      {% endfor %}
+                    </tbody>
+                  </table>
+                </div>
                 {% endif %}
               </div>
             </div>
