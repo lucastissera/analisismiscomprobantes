@@ -584,11 +584,12 @@ def acumulado_por_contraparte(
             nombre = str(mod.iloc[0]) if len(mod) else str(noms.dropna().iloc[0])
         else:
             nombre = ""
-        cuit_show = str(grp[col_doc].astype(str).str.strip().iloc[0]) if cuit_key else ""
+        # En pantalla y Excel: solo dígitos (8 DNI, 11 CUIT), sin puntos ni comas
+        cuit_solo = cuit_key if cuit_key else ""
         out.append(
             {
                 "nombre": nombre,
-                "cuit": cuit_show,
+                "cuit": cuit_solo,
                 "neto": float(grp["_neto"].sum()),
                 "iva": float(grp["_iva"].sum()),
                 "total": float(grp["_tot"].sum()),
@@ -1021,6 +1022,55 @@ def _fila_monto(
     return fila + 1
 
 
+def _ajustar_anchos_hoja_resumen_excel(wsr) -> None:
+    """Carga columnas A (texto) y B (importe) a partir del contenido real."""
+    max_a = 16.0
+    max_b = 12.0
+    for r in range(1, wsr.max_row + 1):
+        a = wsr.cell(row=r, column=1).value
+        b = wsr.cell(row=r, column=2).value
+        if a is not None and str(a).strip() != "":
+            max_a = max(max_a, float(len(str(a))))
+        if b is not None and b != "":
+            max_b = max(max_b, float(_longitud_texto_celda_excel(b)))
+    wsr.column_dimensions["A"].width = min(max(18.0, max_a + 1.5), 78.0)
+    wsr.column_dimensions["B"].width = min(max(14.0, max_b + 2.0), 26.0)
+
+
+def _ajustar_anchos_hoja_distribucion_excel(wsd) -> None:
+    """Ancho mínimo para conceptos largos; columnas de períodos según importes."""
+    max_a = 18.0
+    for r in range(1, wsd.max_row + 1):
+        v = wsd.cell(row=r, column=1).value
+        if v is not None and str(v).strip() != "":
+            max_a = max(max_a, float(len(str(v))))
+    wsd.column_dimensions["A"].width = min(max(20.0, max_a + 1.2), 78.0)
+    for c in range(2, wsd.max_column + 1):
+        le = get_column_letter(c)
+        maxw = 11.0
+        for r in range(1, wsd.max_row + 1):
+            val = wsd.cell(row=r, column=c).value
+            if val is not None and str(val) != "":
+                maxw = max(maxw, float(_longitud_texto_celda_excel(val)))
+        wsd.column_dimensions[le].width = min(max(12.0, maxw + 2.0), 24.0)
+
+
+def _ajustar_anchos_hoja_contrapartes_excel(wsp) -> None:
+    max_n = 10.0
+    max_c = 10.0
+    for r in range(1, wsp.max_row + 1):
+        n = wsp.cell(row=r, column=1).value
+        cu = wsp.cell(row=r, column=2).value
+        if n is not None and str(n).strip() != "":
+            max_n = max(max_n, float(len(str(n))))
+        if cu is not None and str(cu).strip() != "":
+            max_c = max(max_c, float(len(str(cu))))
+    wsp.column_dimensions["A"].width = min(max(14.0, max_n + 1.5), 80.0)
+    wsp.column_dimensions["B"].width = min(max(11.0, max_c + 1.5), 20.0)
+    for le in "CDE":
+        wsp.column_dimensions[le].width = 16.0
+
+
 def escribir_excel_informe_completo(
     df_ajustado: pd.DataFrame,
     destino: io.BytesIO | Path | str,
@@ -1086,6 +1136,7 @@ def escribir_excel_informe_completo(
             fila += 1
         u_res = fila - 1
     wsr.auto_filter.ref = f"A{fila_tabla0}:B{u_res}"
+    _ajustar_anchos_hoja_resumen_excel(wsr)
 
     wsd = wb.create_sheet("Distribución mensual", 2)
     wsd.append(["Concepto"] + [""] * len(periodos_orden))
@@ -1128,12 +1179,7 @@ def escribir_excel_informe_completo(
         _celda_num(wsd, fila, j, icp.get(per, 0.0))
     if wsd.max_column >= 1 and wsd.max_row >= 1:
         wsd.auto_filter.ref = f"A1:{get_column_letter(wsd.max_column)}{wsd.max_row}"
-    for c in range(1, wsd.max_column + 1):
-        le = get_column_letter(c)
-        if c == 1:
-            wsd.column_dimensions[le].width = 24
-        else:
-            wsd.column_dimensions[le].width = 12
+    _ajustar_anchos_hoja_distribucion_excel(wsd)
 
     nom_total = "Total clientes" if emitidos else "Total proveedores"
     wsp = wb.create_sheet(nom_total, 3)
@@ -1142,16 +1188,14 @@ def escribir_excel_informe_completo(
         cell.font = negrita
     for r, trow in enumerate(tabla_contrapartes, start=2):
         wsp.cell(row=r, column=1, value=trow.get("nombre", ""))
-        wsp.cell(row=r, column=2, value=trow.get("cuit", ""))
+        cdoc = wsp.cell(row=r, column=2, value=str(trow.get("cuit", "") or ""))
+        cdoc.number_format = "@"
         _celda_num(wsp, r, 3, trow.get("neto", 0))
         _celda_num(wsp, r, 4, trow.get("iva", 0))
         _celda_num(wsp, r, 5, trow.get("total", 0))
     end_r = max(1, len(tabla_contrapartes) + 1)
     wsp.auto_filter.ref = f"A1:E{end_r}"
-    wsp.column_dimensions["A"].width = 32
-    wsp.column_dimensions["B"].width = 16
-    for col_l in "CDE":
-        wsp.column_dimensions[col_l].width = 16
+    _ajustar_anchos_hoja_contrapartes_excel(wsp)
 
     if isinstance(destino, io.BytesIO):
         destino.seek(0)

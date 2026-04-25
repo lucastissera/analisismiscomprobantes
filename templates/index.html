@@ -405,24 +405,44 @@
         background: var(--table-header-bg);
         line-height: 1.15;
       }
+      /*
+        display:flex en <th> rompe el modelo de tabla: las columnas dejan de alinearse.
+        El flex va en un envoltorio interno que deja el th como table-cell.
+      */
       .th-periodo {
-        display: flex;
+        display: table-cell;
+        vertical-align: middle;
+        text-align: center;
+        min-width: 4.5rem;
+        font-weight: 600;
+        white-space: normal;
+      }
+      .th-periodo-inner {
+        display: inline-flex;
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        text-align: center;
         gap: 0.15rem;
-        min-width: 4.5rem;
-        font-weight: 600;
+        width: 100%;
       }
       .th-periodo-mes {
         display: block;
+        line-height: 1.2;
       }
       .th-periodo-anio {
         display: block;
         font-size: 0.82em;
         font-weight: 500;
         color: var(--text-muted);
+        line-height: 1.1;
+      }
+      .tabla-meses.tabla-contrapartes th:first-child,
+      .tabla-meses.tabla-contrapartes td:first-child {
+        width: max-content;
+        min-width: min(32rem, 100%);
+        max-width: min(48rem, 100%);
+        white-space: normal;
+        word-break: break-word;
       }
       .resultado-comprobantes {
         margin-top: 1.5rem;
@@ -839,8 +859,10 @@
                       {% for per in periodos_orden %}
                       {% set mi = per[5:7]|int %}
                       <th scope="col" class="th-periodo">
-                        <span class="th-periodo-mes">{{ nombres_meses[mi - 1]|capitalize }}</span>
-                        <span class="th-periodo-anio">{{ per[0:4] }}</span>
+                        <span class="th-periodo-inner">
+                          <span class="th-periodo-mes">{{ nombres_meses[mi - 1]|capitalize }}</span>
+                          <span class="th-periodo-anio">{{ per[0:4] }}</span>
+                        </span>
                       </th>
                       {% endfor %}
                     </tr>
