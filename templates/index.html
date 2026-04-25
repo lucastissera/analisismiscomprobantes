@@ -209,11 +209,65 @@
         display: flex;
         flex-direction: column;
         flex-wrap: nowrap;
-        gap: 1.75rem;
+        gap: 0.75rem;
         align-items: stretch;
         margin-top: 1.5rem;
         width: 100%;
         min-width: 0;
+      }
+      .resultado-acordeon {
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: var(--bg-panel);
+        min-width: 0;
+      }
+      .resultado-acordeon-cabecera {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.75rem 1rem;
+        font-size: clamp(
+          1.05rem,
+          calc(
+            1.25rem * min(1, (100vw - var(--margen-h)) / (var(--ref-ancho-utile) * 1px))
+          ),
+          1.25rem
+        );
+        font-weight: 600;
+        color: var(--text-primary);
+        cursor: pointer;
+        list-style: none;
+        user-select: none;
+        margin: 0;
+      }
+      .resultado-acordeon-cabecera::-webkit-details-marker,
+      .resultado-acordeon-cabecera::marker {
+        display: none;
+      }
+      .resultado-acordeon-cabecera::before {
+        content: "";
+        display: inline-block;
+        width: 0.4em;
+        height: 0.4em;
+        border: solid var(--text-muted);
+        border-width: 0 0.14em 0.14em 0;
+        transform: rotate(-45deg);
+        transition: transform 0.2s ease;
+        flex-shrink: 0;
+        margin-top: 0.1em;
+      }
+      .resultado-acordeon[open] .resultado-acordeon-cabecera::before {
+        transform: rotate(45deg);
+        margin-top: 0.05em;
+      }
+      .resultado-acordeon-cuerpo {
+        padding: 0 1rem 1rem 1.1rem;
+        border-top: 1px solid var(--border-divider);
+        margin-top: 0;
+      }
+      .resultado-acordeon-cuerpo .tabla-resumen-anual > h2:first-of-type,
+      .resultado-acordeon-cuerpo .tabla-meses-wrap > h2 {
+        margin-top: 0.85rem;
       }
       .tabla-resumen-anual {
         flex: 0 0 auto;
@@ -323,8 +377,8 @@
         padding-top: 1rem;
         border-top: 1px solid var(--border-divider);
       }
-      .resultado-comprobantes > .resumen-filas > .tabla-resumen-anual h2,
-      .resultado-comprobantes > .resumen-filas > .tabla-meses-wrap h2 {
+      .resultado-comprobantes .tabla-resumen-anual h2,
+      .resultado-comprobantes .tabla-meses-wrap h2 {
         font-size: clamp(
           1.05rem,
           calc(
@@ -669,69 +723,79 @@
       {% if mostrar_resultado %}
       <div class="resultado-comprobantes">
         <div class="resumen-filas">
-          <div class="tabla-resumen-anual">
-            <h2>{{ t('resumen_h2') }}</h2>
-            <p class="subtitulo-detalle">{{ t('resumen_help')|safe }}</p>
-            <table class="tabla-resumen-base-total">
-              <tbody>
-                {% for columna, total in totales_resumen.items() %}
-                <tr>
-                  <td>{{ columna }}</td>
-                  <td>{{ total|fmt_ar }}</td>
-                </tr>
-                {% endfor %}
-                <tr>
-                  <td><strong>{{ t('total_resumen_label') }}</strong></td>
-                  <td><strong>{{ suma_total|fmt_ar }}</strong></td>
-                </tr>
-              </tbody>
-            </table>
+          <details class="resultado-acordeon" id="acordeon-resumen" open>
+            <summary class="resultado-acordeon-cabecera">{{ t('acordeon_resumen') }}</summary>
+            <div class="resultado-acordeon-cuerpo">
+              <div class="tabla-resumen-anual">
+                <h2>{{ t('resumen_h2') }}</h2>
+                <p class="subtitulo-detalle">{{ t('resumen_help')|safe }}</p>
+                <table class="tabla-resumen-base-total">
+                  <tbody>
+                    {% for columna, total in totales_resumen.items() %}
+                    <tr>
+                      <td>{{ columna }}</td>
+                      <td>{{ total|fmt_ar }}</td>
+                    </tr>
+                    {% endfor %}
+                    <tr>
+                      <td><strong>{{ t('total_resumen_label') }}</strong></td>
+                      <td><strong>{{ suma_total|fmt_ar }}</strong></td>
+                    </tr>
+                  </tbody>
+                </table>
 
-            {% if totales_detalle %}
-            <h3 class="subtitulo-detalle" style="margin-top: 1rem">{{ t('detalle_alicuota_h3') }}</h3>
-            <table class="tabla-resumen-detalle">
-              <tbody>
-                {% for columna, total in totales_detalle.items() %}
-                <tr>
-                  <td>{{ columna }}</td>
-                  <td>{{ total|fmt_ar }}</td>
-                </tr>
-                {% endfor %}
-              </tbody>
-            </table>
-            {% endif %}
-          </div>
+                {% if totales_detalle %}
+                <h3 class="subtitulo-detalle" style="margin-top: 1rem">{{ t('detalle_alicuota_h3') }}</h3>
+                <table class="tabla-resumen-detalle">
+                  <tbody>
+                    {% for columna, total in totales_detalle.items() %}
+                    <tr>
+                      <td>{{ columna }}</td>
+                      <td>{{ total|fmt_ar }}</td>
+                    </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+                {% endif %}
+              </div>
+            </div>
+          </details>
 
-          <div class="tabla-meses-wrap">
-            <h2>{{ t('por_mes_h2') }}</h2>
-            <p class="subtitulo-detalle">{{ t('por_mes_help') }}</p>
-            <table class="tabla-meses">
-              <thead>
-                <tr>
-                  <th>{{ t('concepto_th') }}</th>
-                  {% for mes in meses_idx %}
-                  <th>{{ nombres_meses[mes - 1]|capitalize }}</th>
-                  {% endfor %}
-                </tr>
-              </thead>
-              <tbody>
-                {% for columna in columnas_orden %}
-                <tr>
-                  <td>{{ columna }}</td>
-                  {% for mes in meses_idx %}
-                  <td>{{ totales_por_mes[mes][columna]|fmt_ar }}</td>
-                  {% endfor %}
-                </tr>
-                {% endfor %}
-                <tr>
-                  <td><strong>{{ t('total_resumen_label') }}</strong></td>
-                  {% for mes in meses_idx %}
-                  <td><strong>{{ resumen_total_mes[mes]|fmt_ar }}</strong></td>
-                  {% endfor %}
-                </tr>
-              </tbody>
-            </table>
-          </div>
+          <details class="resultado-acordeon" id="acordeon-distrib-mensual">
+            <summary class="resultado-acordeon-cabecera">{{ t('acordeon_distrib_mensual') }}</summary>
+            <div class="resultado-acordeon-cuerpo">
+              <div class="tabla-meses-wrap">
+                <h2>{{ t('por_mes_h2') }}</h2>
+                <p class="subtitulo-detalle">{{ t('por_mes_help') }}</p>
+                <table class="tabla-meses">
+                  <thead>
+                    <tr>
+                      <th>{{ t('concepto_th') }}</th>
+                      {% for mes in meses_idx %}
+                      <th>{{ nombres_meses[mes - 1]|capitalize }}</th>
+                      {% endfor %}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for columna in columnas_orden %}
+                    <tr>
+                      <td>{{ columna }}</td>
+                      {% for mes in meses_idx %}
+                      <td>{{ totales_por_mes[mes][columna]|fmt_ar }}</td>
+                      {% endfor %}
+                    </tr>
+                    {% endfor %}
+                    <tr>
+                      <td><strong>{{ t('total_resumen_label') }}</strong></td>
+                      {% for mes in meses_idx %}
+                      <td><strong>{{ resumen_total_mes[mes]|fmt_ar }}</strong></td>
+                      {% endfor %}
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </details>
         </div>
 
         {% if download_id %}
