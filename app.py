@@ -241,7 +241,7 @@ def procesar():
     try:
         datos = archivo.read()
         buffer = io.BytesIO(datos)
-        df_ajustado, totales, totales_por_mes = procesar_archivo(
+        df_ajustado, totales, totales_por_mes, notas_credito_extras = procesar_archivo(
             buffer,
             0,
             nombre_archivo=nombre,
@@ -278,6 +278,10 @@ def procesar():
         totales_por_mes=totales_por_mes,
         meses_idx=meses_idx,
         resumen_total_mes=resumen_total_mes,
+        total_neto_nc=notas_credito_extras["total_neto_nc"],
+        total_iva_nc=notas_credito_extras["total_iva_nc"],
+        neto_nc_por_mes=notas_credito_extras["neto_nc_por_mes"],
+        iva_nc_por_mes=notas_credito_extras["iva_nc_por_mes"],
         download_id=download_id,
         nombre_salida=nombre_salida,
     )

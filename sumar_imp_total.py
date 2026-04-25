@@ -56,6 +56,22 @@ COLUMNAS_DETALLE_SIN_RESUMEN = [
     c for c in COLUMNAS_A_AJUSTAR if c not in COLUMNAS_TOTAL_RESUMEN
 ]
 
+# Notas de crédito: neto gravado e IVA por alícuota (2,5%–27%; resumen y reparto mensual)
+COLUMNAS_NETO_NC_ALICUOTA = [
+    "Neto Grav. IVA 2,5%",
+    "Neto Grav. IVA 5%",
+    "Neto Grav. IVA 10,5%",
+    "Neto Grav. IVA 21%",
+    "Neto Grav. IVA 27%",
+]
+COLUMNAS_IVA_NC_ALICUOTA = [
+    "IVA 2,5%",
+    "IVA 5%",
+    "IVA 10,5%",
+    "IVA 21%",
+    "IVA 27%",
+]
+
 # Códigos numéricos de la columna "Tipo" que se consideran nota de crédito (suma en negativo)
 # Se matchea por número (sin ceros a la izquierda): "003", "3" y "03" son el mismo código
 CODIGOS_NOTA_CREDITO = {
@@ -419,6 +435,66 @@ def _totales_anuales_y_por_mes(
     return resultado, totales_por_mes
 
 
+def totales_notas_credito_neto_e_iva_por_mes(
+    df_ajustado: pd.DataFrame,
+    nombre_archivo: str | None,
+) -> tuple[float, float, dict[int, float], dict[int, float]]:
+    """
+    Suma solo filas clasificadas como nota de crédito, sobre:
+    - neto gravado 2,5% … 27% (sin 0%),
+    - IVA 2,5% … 27%.
+
+    Usa los valores ya en ``df_ajustado`` (misma regla B/C, signo NC y tipo de cambio
+    que el resto del procesamiento). Debe llamarse antes de formatear Fecha Emisión a
+    texto si se desea; la columna Tipo se sigue leyendo para el mask NC.
+    """
+    codigo_num = serie_codigo_tipo_comprobante(df_ajustado["Tipo"])
+    es_nc = codigo_num.isin(CODIGOS_NOTA_CREDITO).to_numpy(dtype=bool)
+
+    block_neto = df_ajustado[COLUMNAS_NETO_NC_ALICUOTA].apply(
+        pd.to_numeric, errors="coerce"
+    ).fillna(0.0)
+    block_iva = df_ajustado[COLUMNAS_IVA_NC_ALICUOTA].apply(
+        pd.to_numeric, errors="coerce"
+    ).fillna(0.0)
+    neto_row = block_neto.to_numpy(dtype=np.float64, copy=False).sum(axis=1)
+    iva_row = block_iva.to_numpy(dtype=np.float64, copy=False).sum(axis=1)
+
+    total_neto = float(neto_row[es_nc].sum()) if es_nc.any() else 0.0
+    total_iva = float(iva_row[es_nc].sum()) if es_nc.any() else 0.0
+
+    neto_por_mes = {m: 0.0 for m in range(1, 13)}
+    iva_por_mes = {m: 0.0 for m in range(1, 13)}
+
+    mes_fila = _mes_fila_fecha_emision(df_ajustado, nombre_archivo)
+    mes_np = mes_fila.to_numpy(dtype=float, copy=False)
+    n = int(block_neto.shape[0])
+    if len(mes_np) != n:
+        aligned = np.full(n, np.nan, dtype=np.float64)
+        k = min(n, len(mes_np))
+        if k > 0:
+            aligned[:k] = mes_np[:k]
+        mes_np = aligned
+    if len(es_nc) > n:
+        es_nc = es_nc[:n]
+    elif len(es_nc) < n:
+        es_nc = np.pad(es_nc, (0, n - len(es_nc)), constant_values=False)
+
+    for pos in range(n):
+        if not es_nc[pos]:
+            continue
+        m = mes_np[pos]
+        if not np.isfinite(m):
+            continue
+        mi = int(m)
+        if mi < 1 or mi > 12:
+            continue
+        neto_por_mes[mi] += float(neto_row[pos])
+        iva_por_mes[mi] += float(iva_row[pos])
+
+    return total_neto, total_iva, neto_por_mes, iva_por_mes
+
+
 def _mensaje_procesamiento(ui_lang: str, *, es: str, en: str) -> str:
     """Errores de validación: español solo si la UI es es; en cualquier otro idioma, inglés."""
     return es if ui_lang == "es" else en
@@ -607,6 +683,8 @@ def procesar_archivo(
         - DataFrame ajustado (columnas numéricas con signo aplicado según Tipo)
         - Diccionario con el nombre de cada columna y su suma.
         - Diccionario mes (1-12) -> totales por columna (mismas claves que totales).
+        - Diccionario con totales y por mes de «Neto» e «IVA» notas de crédito (alícuotas 2,5%–27%):
+          claves ``total_neto_nc``, ``total_iva_nc``, ``neto_nc_por_mes``, ``iva_nc_por_mes``.
     """
     # header=1: la fila 2 del archivo (índice 1) tiene los nombres de columnas; datos desde fila 3
     df = leer_tabla(
@@ -681,9 +759,18 @@ def procesar_archivo(
     resultado, totales_por_mes = _totales_anuales_y_por_mes(
         df_ajustado, COLUMNAS_A_AJUSTAR, nombre_archivo
     )
+    t_neto_nc, t_iva_nc, neto_nc_mes, iva_nc_mes = totales_notas_credito_neto_e_iva_por_mes(
+        df_ajustado, nombre_archivo
+    )
+    notas_credito_extras = {
+        "total_neto_nc": t_neto_nc,
+        "total_iva_nc": t_iva_nc,
+        "neto_nc_por_mes": neto_nc_mes,
+        "iva_nc_por_mes": iva_nc_mes,
+    }
     _formatear_fecha_emision_salida_excel(df_ajustado)
 
-    return df_ajustado, resultado, totales_por_mes
+    return df_ajustado, resultado, totales_por_mes, notas_credito_extras
 
 
 # Contabilidad (Excel): alineación, negativos entre paréntesis, cero como guión; sin símbolo de moneda.
@@ -802,7 +889,7 @@ def main():
         hoja = int(hoja)
 
     try:
-        df_ajustado, totales, _ = procesar_archivo(ruta, hoja, nombre_archivo=ruta)
+        df_ajustado, totales, _, _ = procesar_archivo(ruta, hoja, nombre_archivo=ruta)
         ruta_salida = construir_ruta_salida(ruta, salida_arg)
         escribir_excel_ajustado_con_formato(df_ajustado, ruta_salida)
 

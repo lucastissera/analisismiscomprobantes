@@ -775,6 +775,14 @@
                         <td><strong>{{ t('total_resumen_label') }}</strong></td>
                         <td><strong>{{ suma_total|fmt_ar }}</strong></td>
                       </tr>
+                      <tr>
+                        <td>{{ t('notas_credito_neto_fila') }}</td>
+                        <td>{{ total_neto_nc|fmt_ar }}</td>
+                      </tr>
+                      <tr>
+                        <td>{{ t('notas_credito_iva_fila') }}</td>
+                        <td>{{ total_iva_nc|fmt_ar }}</td>
+                      </tr>
                     </tbody>
                   </table>
                 </div>
@@ -827,6 +835,18 @@
                       <td><strong>{{ t('total_resumen_label') }}</strong></td>
                       {% for mes in meses_idx %}
                       <td><strong>{{ resumen_total_mes[mes]|fmt_ar }}</strong></td>
+                      {% endfor %}
+                    </tr>
+                    <tr>
+                      <td>{{ t('notas_credito_neto_fila') }}</td>
+                      {% for mes in meses_idx %}
+                      <td>{{ neto_nc_por_mes[mes]|fmt_ar }}</td>
+                      {% endfor %}
+                    </tr>
+                    <tr>
+                      <td>{{ t('notas_credito_iva_fila') }}</td>
+                      {% for mes in meses_idx %}
+                      <td>{{ iva_nc_por_mes[mes]|fmt_ar }}</td>
                       {% endfor %}
                     </tr>
                   </tbody>
