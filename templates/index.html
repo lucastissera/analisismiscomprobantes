@@ -405,6 +405,25 @@
         background: var(--table-header-bg);
         line-height: 1.15;
       }
+      .th-periodo {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        gap: 0.15rem;
+        min-width: 4.5rem;
+        font-weight: 600;
+      }
+      .th-periodo-mes {
+        display: block;
+      }
+      .th-periodo-anio {
+        display: block;
+        font-size: 0.82em;
+        font-weight: 500;
+        color: var(--text-muted);
+      }
       .resultado-comprobantes {
         margin-top: 1.5rem;
         padding-top: 1rem;
@@ -817,8 +836,12 @@
                   <thead>
                     <tr>
                       <th>{{ t('concepto_th') }}</th>
-                      {% for mes in meses_idx %}
-                      <th>{{ nombres_meses[mes - 1]|capitalize }}</th>
+                      {% for per in periodos_orden %}
+                      {% set mi = per[5:7]|int %}
+                      <th scope="col" class="th-periodo">
+                        <span class="th-periodo-mes">{{ nombres_meses[mi - 1]|capitalize }}</span>
+                        <span class="th-periodo-anio">{{ per[0:4] }}</span>
+                      </th>
                       {% endfor %}
                     </tr>
                   </thead>
@@ -826,27 +849,27 @@
                     {% for columna in columnas_orden %}
                     <tr>
                       <td>{{ columna }}</td>
-                      {% for mes in meses_idx %}
-                      <td>{{ totales_por_mes[mes][columna]|fmt_ar }}</td>
+                      {% for per in periodos_orden %}
+                      <td>{{ (totales_por_periodo.get(per) or {}).get(columna, 0)|fmt_ar }}</td>
                       {% endfor %}
                     </tr>
                     {% endfor %}
                     <tr>
                       <td><strong>{{ t('total_resumen_label') }}</strong></td>
-                      {% for mes in meses_idx %}
-                      <td><strong>{{ resumen_total_mes[mes]|fmt_ar }}</strong></td>
+                      {% for per in periodos_orden %}
+                      <td><strong>{{ resumen_total_periodo.get(per, 0)|fmt_ar }}</strong></td>
                       {% endfor %}
                     </tr>
                     <tr>
                       <td>{{ t('notas_credito_neto_fila') }}</td>
-                      {% for mes in meses_idx %}
-                      <td>{{ neto_nc_por_mes[mes]|fmt_ar }}</td>
+                      {% for per in periodos_orden %}
+                      <td>{{ neto_nc_por_periodo.get(per, 0)|fmt_ar }}</td>
                       {% endfor %}
                     </tr>
                     <tr>
                       <td>{{ t('notas_credito_iva_fila') }}</td>
-                      {% for mes in meses_idx %}
-                      <td>{{ iva_nc_por_mes[mes]|fmt_ar }}</td>
+                      {% for per in periodos_orden %}
+                      <td>{{ iva_nc_por_periodo.get(per, 0)|fmt_ar }}</td>
                       {% endfor %}
                     </tr>
                   </tbody>
@@ -854,6 +877,70 @@
               </div>
             </div>
           </details>
+
+          {% if not emitidos %}
+          <details class="resultado-acordeon" id="acordeon-proveedores">
+            <summary class="resultado-acordeon-cabecera">{{ t('acordeon_proveedores') }}</summary>
+            <div class="resultado-acordeon-cuerpo">
+              <div class="tabla-meses-wrap">
+                <table class="tabla-meses tabla-contrapartes">
+                  <thead>
+                    <tr>
+                      <th>{{ t('informe_th_nombre') }}</th>
+                      <th>{{ t('informe_th_cuit') }}</th>
+                      <th>{{ t('informe_th_neto') }}</th>
+                      <th>{{ t('informe_th_iva') }}</th>
+                      <th>{{ t('informe_th_total') }}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for pr in tabla_contrapartes %}
+                    <tr>
+                      <td>{{ pr.nombre }}</td>
+                      <td>{{ pr.cuit }}</td>
+                      <td>{{ pr.neto|fmt_ar }}</td>
+                      <td>{{ pr.iva|fmt_ar }}</td>
+                      <td>{{ pr.total|fmt_ar }}</td>
+                    </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </details>
+          {% endif %}
+
+          {% if emitidos %}
+          <details class="resultado-acordeon" id="acordeon-clientes">
+            <summary class="resultado-acordeon-cabecera">{{ t('acordeon_clientes') }}</summary>
+            <div class="resultado-acordeon-cuerpo">
+              <div class="tabla-meses-wrap">
+                <table class="tabla-meses tabla-contrapartes">
+                  <thead>
+                    <tr>
+                      <th>{{ t('informe_th_nombre') }}</th>
+                      <th>{{ t('informe_th_cuit') }}</th>
+                      <th>{{ t('informe_th_neto') }}</th>
+                      <th>{{ t('informe_th_iva') }}</th>
+                      <th>{{ t('informe_th_total') }}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for pr in tabla_contrapartes %}
+                    <tr>
+                      <td>{{ pr.nombre }}</td>
+                      <td>{{ pr.cuit }}</td>
+                      <td>{{ pr.neto|fmt_ar }}</td>
+                      <td>{{ pr.iva|fmt_ar }}</td>
+                      <td>{{ pr.total|fmt_ar }}</td>
+                    </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </details>
+          {% endif %}
         </div>
 
         {% if download_id %}

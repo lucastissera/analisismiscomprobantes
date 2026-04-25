@@ -12,12 +12,14 @@ import io
 import re
 import sys
 import csv
+from collections import defaultdict
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
 from openpyxl import load_workbook
-from openpyxl.styles import Font
+from openpyxl.styles import Alignment, Font
 from openpyxl.utils import get_column_letter
 
 # Columnas a evaluar: se les aplica signo por Tipo y multiplicación por Tipo Cambio
@@ -70,6 +72,14 @@ COLUMNAS_IVA_NC_ALICUOTA = [
     "IVA 10,5%",
     "IVA 21%",
     "IVA 27%",
+]
+
+# Suma "Neto" en informe por proveedor/cliente (mismas columnas; valores ya ajustados)
+COLUMNAS_NETO_INFORME_CONTRAPARTE = [
+    "Neto Gravado Total",
+    "Neto Grav. IVA 0%",
+    "Neto No Gravado",
+    "Op. Exentas",
 ]
 
 # Códigos numéricos de la columna "Tipo" que se consideran nota de crédito (suma en negativo)
@@ -160,6 +170,30 @@ ALIAS_COLUMNAS = {
     "Otros Tributos": ["Otros Tributos"],
     "Total IVA": ["Total IVA"],
     "Imp. Total": ["Imp. Total"],
+    "Denominación Emisor": [
+        "Denominación Emisor",
+        "Denominacion Emisor",
+        "Razón Social Emisor",
+    ],
+    "Denominación Receptor": [
+        "Denominación Receptor",
+        "Denominacion Receptor",
+        "Razón Social Receptor",
+    ],
+    "Nro. Doc. Emisor": [
+        "Nro. Doc. Emisor",
+        "Nro Doc. Emisor",
+        "Nro Doc Emisor",
+    ],
+    "Nro. Doc. Receptor": [
+        "Nro. Doc. Receptor",
+        "Nro Doc. Receptor",
+        "Nro Doc Receptor",
+    ],
+    "Número Hasta": ["Número Hasta", "Numero Hasta", "Nro. Hasta"],
+    "Cód. Autorización": ["Cód. Autorización", "Cod. Autorización", "Cod Autorizacion"],
+    "Tipo Doc. Emisor": ["Tipo Doc. Emisor", "Tipo Documento Emisor"],
+    "Tipo Doc. Receptor": ["Tipo Doc. Receptor", "Tipo Documento Receptor"],
 }
 
 
@@ -247,14 +281,29 @@ def total_resumen_pantalla(totales: dict[str, float]) -> float:
     return float(sum(totales[c] for c in COLUMNAS_TOTAL_RESUMEN if c in totales))
 
 
-def totales_resumen_por_mes(
-    totales_por_mes: dict[int, dict[str, float]],
-) -> dict[int, float]:
-    """Total (resumen) por mes, misma regla que COLUMNAS_TOTAL_RESUMEN."""
+def totales_resumen_por_periodo(
+    totales_por_periodo: dict[str, dict[str, float]],
+) -> dict[str, float]:
+    """Total (resumen) por mes-año, misma regla que COLUMNAS_TOTAL_RESUMEN."""
     return {
-        m: float(sum(totales_por_mes[m][c] for c in COLUMNAS_TOTAL_RESUMEN if c in totales_por_mes[m]))
-        for m in range(1, 13)
+        p: float(
+            sum(
+                totales_por_periodo[p][c]
+                for c in COLUMNAS_TOTAL_RESUMEN
+                if c in totales_por_periodo[p]
+            )
+        )
+        for p in totales_por_periodo
     }
+
+
+def periodos_orden_crono(*dicts) -> list[str]:
+    """Unión de claves YYYY-MM presentes en diccionarios, orden cronológico."""
+    keys: set[str] = set()
+    for d in dicts:
+        if d:
+            keys |= set(d.keys())
+    return sorted(keys)
 
 
 def limpiar_argumento_ruta(valor: str) -> str:
@@ -397,57 +446,57 @@ def _formatear_fecha_emision_salida_excel(df: pd.DataFrame) -> None:
     )
 
 
-def _totales_anuales_y_por_mes(
+def _totales_anuales_y_por_periodo(
     df_ajustado: pd.DataFrame,
     columnas: list[str],
     nombre_archivo: str | None,
-) -> tuple[dict[str, float], dict[int, dict[str, float]]]:
+) -> tuple[dict[str, float], dict[str, dict[str, float]]]:
     """
-    Suma por columna (todas las filas) y acumulado por mes 1-12 según Fecha Emisión
-    de cada fila del propio df ajustado (mismo criterio que el archivo de salida).
+    Suma por columna (todas las filas) y acumulado por (año, mes) según Fecha Emisión.
+    Claves de período: ``\"YYYY-MM\"`` (solo períodos con al menos un comprobante con fecha).
     """
+    _ = nombre_archivo
     block = df_ajustado[columnas].apply(pd.to_numeric, errors="coerce").fillna(0.0)
     block_arr = block.to_numpy(dtype=np.float64, copy=False)
     resultado = {c: float(block_arr[:, j].sum()) for j, c in enumerate(columnas)}
 
-    totales_por_mes: dict[int, dict[str, float]] = {
-        m: {c: 0.0 for c in columnas} for m in range(1, 13)
-    }
-    mes_fila = _mes_fila_fecha_emision(df_ajustado, nombre_archivo)
-    mes_np = mes_fila.to_numpy(dtype=float, copy=False)
+    totales_por_periodo: dict[str, dict[str, float]] = {}
+
+    fechas = _serie_fecha_emision_a_datetime(df_ajustado["Fecha Emisión"])
+    años = fechas.dt.year
+    meses = fechas.dt.month
     n = block_arr.shape[0]
-    if len(mes_np) != n:
-        aligned = np.full(n, np.nan, dtype=np.float64)
-        k = min(n, len(mes_np))
-        if k > 0:
-            aligned[:k] = mes_np[:k]
-        mes_np = aligned
     for pos in range(n):
-        m = mes_np[pos]
-        if not np.isfinite(m):
+        if pd.isna(fechas.iloc[pos]):
             continue
-        mi = int(m)
-        if mi < 1 or mi > 12:
+        y = int(años.iloc[pos])
+        m = int(meses.iloc[pos])
+        if m < 1 or m > 12:
             continue
+        key = f"{y:04d}-{m:02d}"
+        if key not in totales_por_periodo:
+            totales_por_periodo[key] = {c: 0.0 for c in columnas}
         for j, c in enumerate(columnas):
-            totales_por_mes[mi][c] += float(block_arr[pos, j])
+            totales_por_periodo[key][c] += float(block_arr[pos, j])
 
-    return resultado, totales_por_mes
+    return resultado, totales_por_periodo
 
 
-def totales_notas_credito_neto_e_iva_por_mes(
+def totales_notas_credito_neto_e_iva_por_periodo(
     df_ajustado: pd.DataFrame,
     nombre_archivo: str | None,
-) -> tuple[float, float, dict[int, float], dict[int, float]]:
+) -> tuple[float, float, dict[str, float], dict[str, float]]:
     """
     Suma solo filas clasificadas como nota de crédito, sobre:
     - neto gravado 2,5% … 27% (sin 0%),
     - IVA 2,5% … 27%.
 
     Usa los valores ya en ``df_ajustado`` (misma regla B/C, signo NC y tipo de cambio
-    que el resto del procesamiento). Debe llamarse antes de formatear Fecha Emisión a
-    texto si se desea; la columna Tipo se sigue leyendo para el mask NC.
+    que el resto). Período por Fecha de emisión, clave ``\"YYYY-MM\"``.
+    Debe llamarse antes de formatear Fecha Emisión a texto si se desea; Tipo
+    se sigue leyendo para el mask NC.
     """
+    _ = nombre_archivo
     codigo_num = serie_codigo_tipo_comprobante(df_ajustado["Tipo"])
     es_nc = codigo_num.isin(CODIGOS_NOTA_CREDITO).to_numpy(dtype=bool)
 
@@ -463,18 +512,13 @@ def totales_notas_credito_neto_e_iva_por_mes(
     total_neto = float(neto_row[es_nc].sum()) if es_nc.any() else 0.0
     total_iva = float(iva_row[es_nc].sum()) if es_nc.any() else 0.0
 
-    neto_por_mes = {m: 0.0 for m in range(1, 13)}
-    iva_por_mes = {m: 0.0 for m in range(1, 13)}
+    neto_por: dict[str, float] = defaultdict(float)
+    iva_por: dict[str, float] = defaultdict(float)
 
-    mes_fila = _mes_fila_fecha_emision(df_ajustado, nombre_archivo)
-    mes_np = mes_fila.to_numpy(dtype=float, copy=False)
+    fechas = _serie_fecha_emision_a_datetime(df_ajustado["Fecha Emisión"])
+    años = fechas.dt.year
+    meses = fechas.dt.month
     n = int(block_neto.shape[0])
-    if len(mes_np) != n:
-        aligned = np.full(n, np.nan, dtype=np.float64)
-        k = min(n, len(mes_np))
-        if k > 0:
-            aligned[:k] = mes_np[:k]
-        mes_np = aligned
     if len(es_nc) > n:
         es_nc = es_nc[:n]
     elif len(es_nc) < n:
@@ -483,16 +527,77 @@ def totales_notas_credito_neto_e_iva_por_mes(
     for pos in range(n):
         if not es_nc[pos]:
             continue
-        m = mes_np[pos]
-        if not np.isfinite(m):
+        if pd.isna(fechas.iloc[pos]):
             continue
-        mi = int(m)
-        if mi < 1 or mi > 12:
+        y = int(años.iloc[pos])
+        m = int(meses.iloc[pos])
+        if m < 1 or m > 12:
             continue
-        neto_por_mes[mi] += float(neto_row[pos])
-        iva_por_mes[mi] += float(iva_row[pos])
+        key = f"{y:04d}-{m:02d}"
+        neto_por[key] += float(neto_row[pos])
+        iva_por[key] += float(iva_row[pos])
 
-    return total_neto, total_iva, neto_por_mes, iva_por_mes
+    return total_neto, total_iva, dict(neto_por), dict(iva_por)
+
+
+def _normalizar_clave_cuit_doc(val) -> str:
+    if val is None or (isinstance(val, float) and np.isnan(val)):
+        return ""
+    s = re.sub(r"\D", "", str(val).strip())
+    return s
+
+
+def acumulado_por_contraparte(
+    df_ajustado: pd.DataFrame, emitidos: bool
+) -> list[dict[str, Any]]:
+    """
+    Un acumulado por proveedor (recibidos) o cliente (emitidos): Nombre, CUIT,
+    Neto (cuatro conceptos de neto), IVA (Total IVA) y total (Imp. Total).
+    Valores de ``df_ajustado`` (signo y tipo de cambio ya aplicados).
+    """
+    col_nom = "Denominación Receptor" if emitidos else "Denominación Emisor"
+    col_doc = "Nro. Doc. Receptor" if emitidos else "Nro. Doc. Emisor"
+    for c in [col_nom, col_doc, "Total IVA", "Imp. Total"] + COLUMNAS_NETO_INFORME_CONTRAPARTE:
+        if c not in df_ajustado.columns:
+            return []
+
+    d = df_ajustado[
+        [col_nom, col_doc, "Total IVA", "Imp. Total"] + COLUMNAS_NETO_INFORME_CONTRAPARTE
+    ].copy()
+    d["_k"] = d[col_doc].map(_normalizar_clave_cuit_doc)
+    neto_sum = (
+        d[COLUMNAS_NETO_INFORME_CONTRAPARTE]
+        .apply(pd.to_numeric, errors="coerce")
+        .fillna(0)
+        .sum(axis=1)
+    )
+    d["_neto"] = neto_sum
+    d["_iva"] = pd.to_numeric(d["Total IVA"], errors="coerce").fillna(0)
+    d["_tot"] = pd.to_numeric(d["Imp. Total"], errors="coerce").fillna(0)
+
+    out: list[dict[str, Any]] = []
+    for cuit_key, grp in d.groupby("_k", sort=False):
+        noms = grp[col_nom].astype(str).str.strip()
+        noms = noms.replace("", pd.NA).replace("nan", pd.NA)
+        if noms.notna().any():
+            mod = noms.mode()
+            nombre = str(mod.iloc[0]) if len(mod) else str(noms.dropna().iloc[0])
+        else:
+            nombre = ""
+        cuit_show = str(grp[col_doc].astype(str).str.strip().iloc[0]) if cuit_key else ""
+        out.append(
+            {
+                "nombre": nombre,
+                "cuit": cuit_show,
+                "neto": float(grp["_neto"].sum()),
+                "iva": float(grp["_iva"].sum()),
+                "total": float(grp["_tot"].sum()),
+            }
+        )
+    out.sort(
+        key=lambda r: ((r["nombre"] or "zzz").lower(), r["cuit"] or "")
+    )
+    return out
 
 
 def _mensaje_procesamiento(ui_lang: str, *, es: str, en: str) -> str:
@@ -661,7 +766,13 @@ def procesar_archivo(
     ui_lang: str = "en",
     *,
     emitidos: bool = False,
-) -> tuple[pd.DataFrame, dict[str, float], dict[int, dict[str, float]]]:
+) -> tuple[
+    pd.DataFrame,
+    dict[str, float],
+    dict[str, dict[str, float]],
+    dict,
+    list[dict[str, Any]],
+]:
     """
     Lee un archivo Excel y devuelve la sumatoria de las columnas indicadas.
     Fila 1 = encabezado general, fila 2 = encabezados de columnas, datos desde fila 3.
@@ -682,9 +793,9 @@ def procesar_archivo(
         Tuple con:
         - DataFrame ajustado (columnas numéricas con signo aplicado según Tipo)
         - Diccionario con el nombre de cada columna y su suma.
-        - Diccionario mes (1-12) -> totales por columna (mismas claves que totales).
-        - Diccionario con totales y por mes de «Neto» e «IVA» notas de crédito (alícuotas 2,5%–27%):
-          claves ``total_neto_nc``, ``total_iva_nc``, ``neto_nc_por_mes``, ``iva_nc_por_mes``.
+        - Diccionario período (``\"YYYY-MM\"``) -> totales por columna.
+        - Diccionario con «Neto/IVA notas de crédito» (anual y por período) alícuotas 2,5%–27%.
+        - Tabla de acumulados por proveedor o cliente (Nombre, CUIT, Neto, IVA, Total).
     """
     # header=1: la fila 2 del archivo (índice 1) tiene los nombres de columnas; datos desde fila 3
     df = leer_tabla(
@@ -756,21 +867,28 @@ def procesar_archivo(
         valores_ajustados = (valores * signo * tipo_cambio).astype(float)
         df_ajustado[col] = valores_ajustados.values
 
-    resultado, totales_por_mes = _totales_anuales_y_por_mes(
+    resultado, totales_por_periodo = _totales_anuales_y_por_periodo(
         df_ajustado, COLUMNAS_A_AJUSTAR, nombre_archivo
     )
-    t_neto_nc, t_iva_nc, neto_nc_mes, iva_nc_mes = totales_notas_credito_neto_e_iva_por_mes(
+    t_neto_nc, t_iva_nc, neto_nc_p, iva_nc_p = totales_notas_credito_neto_e_iva_por_periodo(
         df_ajustado, nombre_archivo
     )
     notas_credito_extras = {
         "total_neto_nc": t_neto_nc,
         "total_iva_nc": t_iva_nc,
-        "neto_nc_por_mes": neto_nc_mes,
-        "iva_nc_por_mes": iva_nc_mes,
+        "neto_nc_por_periodo": neto_nc_p,
+        "iva_nc_por_periodo": iva_nc_p,
     }
+    tabla_contrapartes = acumulado_por_contraparte(df_ajustado, emitidos)
     _formatear_fecha_emision_salida_excel(df_ajustado)
 
-    return df_ajustado, resultado, totales_por_mes, notas_credito_extras
+    return (
+        df_ajustado,
+        resultado,
+        totales_por_periodo,
+        notas_credito_extras,
+        tabla_contrapartes,
+    )
 
 
 # Contabilidad (Excel): alineación, negativos entre paréntesis, cero como guión; sin símbolo de moneda.
@@ -808,54 +926,256 @@ def _longitud_texto_celda_excel(val) -> int:
     return len(str(val))
 
 
+# Columnas a ocultar en hoja de comprobantes (exporte)
+_COLUMNA_OCULTA_COMUN = [
+    "Número Hasta",
+    "Cód. Autorización",
+    "Tipo Doc. Emisor",
+    "Tipo Doc. Receptor",
+]
+_COLUMNA_OCULTA_SI_RECIBIDOS = ["Nro. Doc. Receptor"]
+_ANCHO_DENOM = 40
+_SHEET_COMPR = "Comprobantes"
+
+
+def _nombres_columnas_ocultar(emitidos: bool) -> set[str]:
+    s = set(_COLUMNA_OCULTA_COMUN)
+    if not emitidos:
+        s |= set(_COLUMNA_OCULTA_SI_RECIBIDOS)
+    return s
+
+
+def _aplicar_hoja_comprobantes_excel(
+    _wb,
+    ws,
+    encabezados: list,
+    emitidos: bool,
+) -> None:
+    negrita = Font(bold=True)
+    for cell in ws[1]:
+        cell.font = negrita
+
+    ocultar = _nombres_columnas_ocultar(emitidos)
+    denom_anchura = {
+        "Denominación Emisor",
+        "Denominación Receptor",
+    }
+
+    for col_i, nombre in enumerate(encabezados, start=1):
+        if not nombre:
+            continue
+        letra = get_column_letter(col_i)
+        dim = ws.column_dimensions[letra]
+        if nombre in ocultar:
+            dim.hidden = True
+            dim.width = 0.5
+            continue
+        if nombre in denom_anchura:
+            dim.width = float(_ANCHO_DENOM)
+            for fila in range(2, ws.max_row + 1):
+                c = ws.cell(row=fila, column=col_i)
+                if c.value and isinstance(c.value, str) and len(c.value) > _ANCHO_DENOM * 1.2:
+                    c.alignment = Alignment(wrap_text=True, vertical="top")
+            continue
+
+        max_long = 0
+        for fila in range(1, ws.max_row + 1):
+            v = ws.cell(row=fila, column=col_i).value
+            max_long = max(max_long, _longitud_texto_celda_excel(v), len(str(nombre) if nombre else ""))
+        if max_long > 0:
+            dim.width = min(max_long + 2, 60)
+
+    for col_i, nombre in enumerate(encabezados, start=1):
+        if nombre in COLUMNAS_A_AJUSTAR:
+            for fila in range(2, ws.max_row + 1):
+                cel = ws.cell(row=fila, column=col_i)
+                if cel.value is not None and cel.value != "":
+                    cel.number_format = _FORMATO_CONTABILIDAD_SIN_MONEDA
+
+    ws.title = _SHEET_COMPR
+    ws.freeze_panes = "A2"
+    if ws.max_row >= 1 and ws.max_column >= 1:
+        ult = get_column_letter(ws.max_column)
+        ws.auto_filter.ref = f"A1:{ult}{ws.max_row}"
+
+
+def _celda_num(ws, r: int, c: int, v: object) -> None:
+    cl = ws.cell(row=r, column=c, value=v)
+    if v is not None and isinstance(v, (int, float)) and v != "":
+        cl.number_format = _FORMATO_CONTABILIDAD_SIN_MONEDA
+
+
+def _fila_monto(
+    wsr,
+    fila: int,
+    etiq: str,
+    valor: object,
+    bold_l: bool = False,
+) -> int:
+    c1 = wsr.cell(row=fila, column=1, value=etiq)
+    if bold_l:
+        c1.font = Font(bold=True)
+    cl = wsr.cell(row=fila, column=2, value=valor)
+    if isinstance(valor, (int, float)):
+        cl.number_format = _FORMATO_CONTABILIDAD_SIN_MONEDA
+    return fila + 1
+
+
+def escribir_excel_informe_completo(
+    df_ajustado: pd.DataFrame,
+    destino: io.BytesIO | Path | str,
+    *,
+    emitidos: bool,
+    totales: dict[str, float],
+    totales_por_periodo: dict[str, dict[str, float]],
+    periodos_orden: list[str],
+    notas_credito_extras: dict,
+    totales_resumen: dict,
+    totales_detalle: dict,
+    suma_total: float,
+    columnas_orden: list[str],
+    tabla_contrapartes: list[dict],
+) -> None:
+    temp = io.BytesIO()
+    df_ajustado.to_excel(temp, index=False, engine="openpyxl", sheet_name=_SHEET_COMPR)
+    temp.seek(0)
+    wb = load_workbook(temp)
+    ws0 = wb.active
+    encab = [c.value for c in ws0[1]]
+    _aplicar_hoja_comprobantes_excel(wb, ws0, encab, emitidos)
+
+    negrita = Font(bold=True)
+    wsr = wb.create_sheet("Resumen", 1)
+    fila = 1
+    t1 = wsr.cell(row=1, column=1, value="Resumen (base del total)")
+    t1.font = negrita
+    t1.alignment = Alignment(horizontal="center", vertical="center")
+    wsr.merge_cells("A1:B1")
+    fila = 2
+    wsr.cell(row=fila, column=1, value="Concepto").font = negrita
+    wsr.cell(row=fila, column=2, value="Importe").font = negrita
+    fila_tabla0 = 2
+    fila = 3
+    for k, v in totales_resumen.items():
+        wsr.cell(row=fila, column=1, value=k)
+        cl = wsr.cell(row=fila, column=2, value=v)
+        cl.number_format = _FORMATO_CONTABILIDAD_SIN_MONEDA
+        fila += 1
+    ctot1 = wsr.cell(row=fila, column=1, value="Total (resumen)")
+    ctot1.font = negrita
+    ctot2 = wsr.cell(row=fila, column=2, value=suma_total)
+    ctot2.font = negrita
+    ctot2.number_format = _FORMATO_CONTABILIDAD_SIN_MONEDA
+    fila += 1
+    fila = _fila_monto(wsr, fila, "Neto Notas de Crédito", notas_credito_extras.get("total_neto_nc", 0))
+    fila = _fila_monto(wsr, fila, "IVA Notas de Crédito", notas_credito_extras.get("total_iva_nc", 0))
+    u_res = fila - 1
+    if totales_detalle:
+        fila += 1
+        wsr.cell(row=fila, column=1, value="Detalle por alícuota")
+        wsr.cell(row=fila, column=1).font = negrita
+        wsr.merge_cells(start_row=fila, start_column=1, end_row=fila, end_column=2)
+        fila += 1
+        wsr.cell(row=fila, column=1, value="Concepto").font = negrita
+        wsr.cell(row=fila, column=2, value="Importe").font = negrita
+        fila += 1
+        for k, v in totales_detalle.items():
+            wsr.cell(row=fila, column=1, value=k)
+            cl = wsr.cell(row=fila, column=2, value=v)
+            cl.number_format = _FORMATO_CONTABILIDAD_SIN_MONEDA
+            fila += 1
+        u_res = fila - 1
+    wsr.auto_filter.ref = f"A{fila_tabla0}:B{u_res}"
+
+    wsd = wb.create_sheet("Distribución mensual", 2)
+    wsd.append(["Concepto"] + [""] * len(periodos_orden))
+    for i, per in enumerate(periodos_orden, start=2):
+        y, m = map(int, per.split("-"))
+        mes_lbl = NOMBRES_MESES[m - 1].capitalize()
+        chead = wsd.cell(row=1, column=i, value=f"{mes_lbl}\n{y}")
+        chead.font = negrita
+        chead.alignment = Alignment(
+            wrap_text=True, horizontal="center", vertical="center"
+        )
+    c0 = wsd.cell(row=1, column=1, value="Concepto")
+    c0.font = negrita
+    c0.alignment = Alignment(horizontal="left", vertical="center")
+    wsd.row_dimensions[1].height = 32
+    fila = 2
+    for col in columnas_orden:
+        wsd.cell(row=fila, column=1, value=col)
+        for j, per in enumerate(periodos_orden, start=2):
+            vcel = totales_por_periodo.get(per, {}).get(col, 0.0)
+            _celda_num(wsd, fila, j, vcel)
+        fila += 1
+    wsd.cell(row=fila, column=1, value="Total (resumen)").font = negrita
+    for j, per in enumerate(periodos_orden, start=2):
+        tr = 0.0
+        for cname in COLUMNAS_TOTAL_RESUMEN:
+            tr += float(totales_por_periodo.get(per, {}).get(cname, 0.0))
+        cc = wsd.cell(row=fila, column=j, value=tr)
+        cc.font = negrita
+        cc.number_format = _FORMATO_CONTABILIDAD_SIN_MONEDA
+    fila += 1
+    wsd.cell(row=fila, column=1, value="Neto Notas de Crédito")
+    ncp = notas_credito_extras.get("neto_nc_por_periodo", {})
+    for j, per in enumerate(periodos_orden, start=2):
+        _celda_num(wsd, fila, j, ncp.get(per, 0.0))
+    fila += 1
+    wsd.cell(row=fila, column=1, value="IVA Notas de Crédito")
+    icp = notas_credito_extras.get("iva_nc_por_periodo", {})
+    for j, per in enumerate(periodos_orden, start=2):
+        _celda_num(wsd, fila, j, icp.get(per, 0.0))
+    if wsd.max_column >= 1 and wsd.max_row >= 1:
+        wsd.auto_filter.ref = f"A1:{get_column_letter(wsd.max_column)}{wsd.max_row}"
+    for c in range(1, wsd.max_column + 1):
+        le = get_column_letter(c)
+        if c == 1:
+            wsd.column_dimensions[le].width = 24
+        else:
+            wsd.column_dimensions[le].width = 12
+
+    nom_total = "Total clientes" if emitidos else "Total proveedores"
+    wsp = wb.create_sheet(nom_total, 3)
+    wsp.append(["Nombre", "CUIT", "Neto", "IVA", "Total"])
+    for cell in wsp[1]:
+        cell.font = negrita
+    for r, trow in enumerate(tabla_contrapartes, start=2):
+        wsp.cell(row=r, column=1, value=trow.get("nombre", ""))
+        wsp.cell(row=r, column=2, value=trow.get("cuit", ""))
+        _celda_num(wsp, r, 3, trow.get("neto", 0))
+        _celda_num(wsp, r, 4, trow.get("iva", 0))
+        _celda_num(wsp, r, 5, trow.get("total", 0))
+    end_r = max(1, len(tabla_contrapartes) + 1)
+    wsp.auto_filter.ref = f"A1:E{end_r}"
+    wsp.column_dimensions["A"].width = 32
+    wsp.column_dimensions["B"].width = 16
+    for col_l in "CDE":
+        wsp.column_dimensions[col_l].width = 16
+
+    if isinstance(destino, io.BytesIO):
+        destino.seek(0)
+        destino.truncate(0)
+        wb.save(destino)
+        destino.seek(0)
+    else:
+        wb.save(destino)
+
+
 def escribir_excel_ajustado_con_formato(
     df: pd.DataFrame, destino: io.BytesIO | Path | str
 ) -> None:
     """
-    Escribe el DataFrame en .xlsx con:
-    - Fila 1 (encabezados) en negrita.
-    - Celdas numéricas de COLUMNAS_A_AJUSTAR: formato contabilidad sin moneda (alineación, negativos
-      entre paréntesis, cero como guión).
-    - Ancho de cada una de esas columnas según el contenido más largo (encabezado o valores).
-    - Fila de encabezado fija al desplazarse (freeze panes en fila 1).
-    - Autofiltro activo sobre la tabla (fila de títulos con filtros en Excel).
+    Escribe solo la hoja de comprobantes con formato (compat. con llamadas
+    que no construyen hojas de resumen / distribución).
     """
     temp = io.BytesIO()
-    df.to_excel(temp, index=False, engine="openpyxl")
+    df.to_excel(temp, index=False, engine="openpyxl", sheet_name=_SHEET_COMPR)
     temp.seek(0)
     wb = load_workbook(temp)
     ws = wb.active
-    negrita = Font(bold=True)
-
-    for cell in ws[1]:
-        cell.font = negrita
-
-    encabezados = [c.value for c in ws[1]]
-    for nombre_col in COLUMNAS_A_AJUSTAR:
-        try:
-            idx = encabezados.index(nombre_col) + 1
-        except ValueError:
-            continue
-        for fila in range(2, ws.max_row + 1):
-            celda = ws.cell(row=fila, column=idx)
-            if celda.value is not None and celda.value != "":
-                celda.number_format = _FORMATO_CONTABILIDAD_SIN_MONEDA
-
-        max_long = 0
-        for fila in range(1, ws.max_row + 1):
-            max_long = max(
-                max_long,
-                _longitud_texto_celda_excel(ws.cell(row=fila, column=idx).value),
-            )
-        if max_long > 0:
-            ws.column_dimensions[get_column_letter(idx)].width = max_long + 1.5
-
-    ws.freeze_panes = "A2"
-
-    if ws.max_row >= 1 and ws.max_column >= 1:
-        ultima_col = get_column_letter(ws.max_column)
-        ws.auto_filter.ref = f"A1:{ultima_col}{ws.max_row}"
-
+    encab = [c.value for c in ws[1]]
+    _aplicar_hoja_comprobantes_excel(wb, ws, encab, emitidos=False)
     if isinstance(destino, io.BytesIO):
         destino.seek(0)
         destino.truncate(0)
@@ -889,9 +1209,33 @@ def main():
         hoja = int(hoja)
 
     try:
-        df_ajustado, totales, _, _ = procesar_archivo(ruta, hoja, nombre_archivo=ruta)
+        (
+            df_ajustado,
+            totales,
+            tpp,
+            nce,
+            tabla_c,
+        ) = procesar_archivo(ruta, hoja, nombre_archivo=ruta)
         ruta_salida = construir_ruta_salida(ruta, salida_arg)
-        escribir_excel_ajustado_con_formato(df_ajustado, ruta_salida)
+        per_keys = periodos_orden_crono(
+            tpp, nce.get("neto_nc_por_periodo", {}), nce.get("iva_nc_por_periodo", {})
+        )
+        totales_res = {c: totales[c] for c in COLUMNAS_TOTAL_RESUMEN}
+        totales_det = {c: totales[c] for c in COLUMNAS_DETALLE_SIN_RESUMEN}
+        escribir_excel_informe_completo(
+            df_ajustado,
+            ruta_salida,
+            emitidos=False,
+            totales=totales,
+            totales_por_periodo=tpp,
+            periodos_orden=per_keys,
+            notas_credito_extras=nce,
+            totales_resumen=totales_res,
+            totales_detalle=totales_det,
+            suma_total=total_resumen_pantalla(totales),
+            columnas_orden=COLUMNAS_A_AJUSTAR,
+            tabla_contrapartes=tabla_c,
+        )
 
         print("Sumas (desde fila 3):")
         for col, total in totales.items():

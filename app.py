@@ -34,10 +34,11 @@ from sumar_imp_total import (
     COLUMNAS_A_AJUSTAR,
     COLUMNAS_DETALLE_SIN_RESUMEN,
     COLUMNAS_TOTAL_RESUMEN,
-    escribir_excel_ajustado_con_formato,
+    escribir_excel_informe_completo,
+    periodos_orden_crono,
     procesar_archivo,
     total_resumen_pantalla,
-    totales_resumen_por_mes,
+    totales_resumen_por_periodo,
 )
 
 app = Flask(__name__)
@@ -241,7 +242,13 @@ def procesar():
     try:
         datos = archivo.read()
         buffer = io.BytesIO(datos)
-        df_ajustado, totales, totales_por_mes, notas_credito_extras = procesar_archivo(
+        (
+            df_ajustado,
+            totales,
+            totales_por_periodo,
+            notas_credito_extras,
+            tabla_contrapartes,
+        ) = procesar_archivo(
             buffer,
             0,
             nombre_archivo=nombre,
@@ -256,32 +263,51 @@ def procesar():
         )
 
     salida = io.BytesIO()
-    escribir_excel_ajustado_con_formato(df_ajustado, salida)
+    periodos_orden = periodos_orden_crono(
+        totales_por_periodo,
+        notas_credito_extras.get("neto_nc_por_periodo", {}),
+        notas_credito_extras.get("iva_nc_por_periodo", {}),
+    )
+    totales_resumen = {c: totales[c] for c in COLUMNAS_TOTAL_RESUMEN}
+    totales_detalle = {c: totales[c] for c in COLUMNAS_DETALLE_SIN_RESUMEN}
+    escribir_excel_informe_completo(
+        df_ajustado,
+        salida,
+        emitidos=emitidos,
+        totales=totales,
+        totales_por_periodo=totales_por_periodo,
+        periodos_orden=periodos_orden,
+        notas_credito_extras=notas_credito_extras,
+        totales_resumen=totales_resumen,
+        totales_detalle=totales_detalle,
+        suma_total=round(total_resumen_pantalla(totales), 2),
+        columnas_orden=COLUMNAS_A_AJUSTAR,
+        tabla_contrapartes=tabla_contrapartes,
+    )
     contenido = salida.getvalue()
 
     nombre_salida = f"{Path(nombre).stem}_ajustado.xlsx"
     download_id = uuid4().hex
     DESCARGAS[download_id] = (contenido, nombre_salida, MIME_XLSX)
 
-    resumen_total_mes = totales_resumen_por_mes(totales_por_mes)
-    totales_resumen = {c: totales[c] for c in COLUMNAS_TOTAL_RESUMEN}
-    totales_detalle = {c: totales[c] for c in COLUMNAS_DETALLE_SIN_RESUMEN}
-    meses_idx = list(range(1, 13))
+    resumen_total_periodo = totales_resumen_por_periodo(totales_por_periodo)
 
     return render_template(
         "index.html",
         mostrar_resultado=True,
+        emitidos=emitidos,
         totales_resumen=totales_resumen,
         totales_detalle=totales_detalle,
         columnas_orden=COLUMNAS_A_AJUSTAR,
         suma_total=round(total_resumen_pantalla(totales), 2),
-        totales_por_mes=totales_por_mes,
-        meses_idx=meses_idx,
-        resumen_total_mes=resumen_total_mes,
+        totales_por_periodo=totales_por_periodo,
+        periodos_orden=periodos_orden,
+        resumen_total_periodo=resumen_total_periodo,
         total_neto_nc=notas_credito_extras["total_neto_nc"],
         total_iva_nc=notas_credito_extras["total_iva_nc"],
-        neto_nc_por_mes=notas_credito_extras["neto_nc_por_mes"],
-        iva_nc_por_mes=notas_credito_extras["iva_nc_por_mes"],
+        neto_nc_por_periodo=notas_credito_extras["neto_nc_por_periodo"],
+        iva_nc_por_periodo=notas_credito_extras["iva_nc_por_periodo"],
+        tabla_contrapartes=tabla_contrapartes,
         download_id=download_id,
         nombre_salida=nombre_salida,
     )
