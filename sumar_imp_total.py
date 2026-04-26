@@ -542,10 +542,26 @@ def totales_notas_credito_neto_e_iva_por_periodo(
 
 
 def _normalizar_clave_cuit_doc(val) -> str:
-    if val is None or (isinstance(val, float) and np.isnan(val)):
+    """
+    Solo dígitos (DNI/CUIT). Si pandas/Excel leyó el documento como float
+    (p. ej. 27318787949.0), ``str(val)`` sería ``27318787949.0`` y al quitar
+    no-dígitos quedaría un 0 de más al final; se convierte antes a entero.
+    """
+    if val is None:
         return ""
-    s = re.sub(r"\D", "", str(val).strip())
-    return s
+    if isinstance(val, (int, np.integer)):
+        if int(val) < 0:
+            return ""
+        return str(int(val))
+    if isinstance(val, (float, np.floating)):
+        f = float(val)
+        if np.isnan(f) or not np.isfinite(f):
+            return ""
+        r = round(f)
+        if abs(f - r) < 1e-9 and 0 <= r < 10**15:
+            return str(int(r))
+    s = str(val).strip()
+    return re.sub(r"\D", "", s)
 
 
 def acumulado_por_contraparte(
