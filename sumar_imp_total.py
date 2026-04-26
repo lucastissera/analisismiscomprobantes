@@ -18,9 +18,10 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
-from openpyxl import load_workbook
+from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Alignment, Font
 from openpyxl.utils import get_column_letter
+from openpyxl.utils.dataframe import dataframe_to_rows
 
 # Columnas a evaluar: se les aplica signo por Tipo y multiplicación por Tipo Cambio
 COLUMNAS_A_AJUSTAR = [
@@ -951,6 +952,7 @@ def _aplicar_hoja_comprobantes_excel(
     ws,
     encabezados: list,
     emitidos: bool,
+    titulo_hoja: str | None = None,
 ) -> None:
     negrita = Font(bold=True)
     for cell in ws[1]:
@@ -993,7 +995,7 @@ def _aplicar_hoja_comprobantes_excel(
                 if cel.value is not None and cel.value != "":
                     cel.number_format = _FORMATO_CONTABILIDAD_SIN_MONEDA
 
-    ws.title = _SHEET_COMPR
+    ws.title = titulo_hoja if titulo_hoja is not None else _SHEET_COMPR
     ws.freeze_panes = "A2"
     if ws.max_row >= 1 and ws.max_column >= 1:
         ult = get_column_letter(ws.max_column)
@@ -1071,32 +1073,14 @@ def _ajustar_anchos_hoja_contrapartes_excel(wsp) -> None:
         wsp.column_dimensions[le].width = 16.0
 
 
-def escribir_excel_informe_completo(
-    df_ajustado: pd.DataFrame,
-    destino: io.BytesIO | Path | str,
-    *,
-    emitidos: bool,
-    totales: dict[str, float],
-    totales_por_periodo: dict[str, dict[str, float]],
-    periodos_orden: list[str],
-    notas_credito_extras: dict,
+def _rellenar_hoja_resumen_excel(
+    wsr,
     totales_resumen: dict,
     totales_detalle: dict,
     suma_total: float,
-    columnas_orden: list[str],
-    tabla_contrapartes: list[dict],
+    notas_credito_extras: dict,
 ) -> None:
-    temp = io.BytesIO()
-    df_ajustado.to_excel(temp, index=False, engine="openpyxl", sheet_name=_SHEET_COMPR)
-    temp.seek(0)
-    wb = load_workbook(temp)
-    ws0 = wb.active
-    encab = [c.value for c in ws0[1]]
-    _aplicar_hoja_comprobantes_excel(wb, ws0, encab, emitidos)
-
     negrita = Font(bold=True)
-    wsr = wb.create_sheet("Resumen", 1)
-    fila = 1
     t1 = wsr.cell(row=1, column=1, value="Resumen (base del total)")
     t1.font = negrita
     t1.alignment = Alignment(horizontal="center", vertical="center")
@@ -1138,7 +1122,15 @@ def escribir_excel_informe_completo(
     wsr.auto_filter.ref = f"A{fila_tabla0}:B{u_res}"
     _ajustar_anchos_hoja_resumen_excel(wsr)
 
-    wsd = wb.create_sheet("Distribución mensual", 2)
+
+def _rellenar_hoja_distribucion_excel(
+    wsd,
+    periodos_orden: list[str],
+    columnas_orden: list[str],
+    totales_por_periodo: dict[str, dict[str, float]],
+    notas_credito_extras: dict,
+) -> None:
+    negrita = Font(bold=True)
     wsd.append(["Concepto"] + [""] * len(periodos_orden))
     for i, per in enumerate(periodos_orden, start=2):
         y, m = map(int, per.split("-"))
@@ -1181,8 +1173,9 @@ def escribir_excel_informe_completo(
         wsd.auto_filter.ref = f"A1:{get_column_letter(wsd.max_column)}{wsd.max_row}"
     _ajustar_anchos_hoja_distribucion_excel(wsd)
 
-    nom_total = "Total clientes" if emitidos else "Total proveedores"
-    wsp = wb.create_sheet(nom_total, 3)
+
+def _rellenar_hoja_contrapartes_excel(wsp, tabla_contrapartes: list[dict]) -> None:
+    negrita = Font(bold=True)
     wsp.append(["Nombre", "CUIT", "Neto", "IVA", "Total"])
     for cell in wsp[1]:
         cell.font = negrita
@@ -1196,6 +1189,144 @@ def escribir_excel_informe_completo(
     end_r = max(1, len(tabla_contrapartes) + 1)
     wsp.auto_filter.ref = f"A1:E{end_r}"
     _ajustar_anchos_hoja_contrapartes_excel(wsp)
+
+
+def _hoja_comprobantes_desde_dataframe(
+    wb,
+    df_ajustado: pd.DataFrame,
+    nombre_hoja: str,
+    emitidos: bool,
+) -> None:
+    ws = wb.create_sheet(nombre_hoja)
+    for row in dataframe_to_rows(df_ajustado, index=False, header=True):
+        ws.append(row)
+    encab = [c.value for c in ws[1]]
+    _aplicar_hoja_comprobantes_excel(wb, ws, encab, emitidos, titulo_hoja=nombre_hoja)
+
+
+def escribir_excel_informe_completo(
+    df_ajustado: pd.DataFrame,
+    destino: io.BytesIO | Path | str,
+    *,
+    emitidos: bool,
+    totales: dict[str, float],
+    totales_por_periodo: dict[str, dict[str, float]],
+    periodos_orden: list[str],
+    notas_credito_extras: dict,
+    totales_resumen: dict,
+    totales_detalle: dict,
+    suma_total: float,
+    columnas_orden: list[str],
+    tabla_contrapartes: list[dict],
+) -> None:
+    temp = io.BytesIO()
+    df_ajustado.to_excel(temp, index=False, engine="openpyxl", sheet_name=_SHEET_COMPR)
+    temp.seek(0)
+    wb = load_workbook(temp)
+    ws0 = wb.active
+    encab = [c.value for c in ws0[1]]
+    _aplicar_hoja_comprobantes_excel(wb, ws0, encab, emitidos)
+
+    wsr = wb.create_sheet("Resumen", 1)
+    _rellenar_hoja_resumen_excel(
+        wsr, totales_resumen, totales_detalle, suma_total, notas_credito_extras
+    )
+
+    wsd = wb.create_sheet("Distribución mensual", 2)
+    _rellenar_hoja_distribucion_excel(
+        wsd, periodos_orden, columnas_orden, totales_por_periodo, notas_credito_extras
+    )
+
+    nom_total = "Total clientes" if emitidos else "Total proveedores"
+    wsp = wb.create_sheet(nom_total, 3)
+    _rellenar_hoja_contrapartes_excel(wsp, tabla_contrapartes)
+
+    if isinstance(destino, io.BytesIO):
+        destino.seek(0)
+        destino.truncate(0)
+        wb.save(destino)
+        destino.seek(0)
+    else:
+        wb.save(destino)
+
+
+def escribir_excel_informe_dual(
+    destino: io.BytesIO | Path | str,
+    *,
+    df_recibidos: pd.DataFrame,
+    totales_por_periodo_rec: dict[str, dict[str, float]],
+    periodos_orden_rec: list[str],
+    notas_credito_extras_rec: dict,
+    totales_resumen_rec: dict,
+    totales_detalle_rec: dict,
+    suma_total_rec: float,
+    tabla_contrapartes_rec: list[dict],
+    df_emitidos: pd.DataFrame,
+    totales_por_periodo_emit: dict[str, dict[str, float]],
+    periodos_orden_emit: list[str],
+    notas_credito_extras_emit: dict,
+    totales_resumen_emit: dict,
+    totales_detalle_emit: dict,
+    suma_total_emit: float,
+    tabla_contrapartes_emit: list[dict],
+    columnas_orden: list[str],
+) -> None:
+    """Un solo libro con comprobantes, resumen, distribución y contrapartes para recibidos y emitidos."""
+    wb = Workbook()
+    ws0 = wb.active
+    ws0.title = "Comprobantes recibidos"
+    for row in dataframe_to_rows(df_recibidos, index=False, header=True):
+        ws0.append(row)
+    encab_r = [c.value for c in ws0[1]]
+    _aplicar_hoja_comprobantes_excel(
+        wb, ws0, encab_r, False, titulo_hoja="Comprobantes recibidos"
+    )
+
+    wsr = wb.create_sheet("Resumen recibidos")
+    _rellenar_hoja_resumen_excel(
+        wsr,
+        totales_resumen_rec,
+        totales_detalle_rec,
+        suma_total_rec,
+        notas_credito_extras_rec,
+    )
+
+    wsd_r = wb.create_sheet("Distribución mensual Recibidos")
+    _rellenar_hoja_distribucion_excel(
+        wsd_r,
+        periodos_orden_rec,
+        columnas_orden,
+        totales_por_periodo_rec,
+        notas_credito_extras_rec,
+    )
+
+    wsp_r = wb.create_sheet("Proveedores")
+    _rellenar_hoja_contrapartes_excel(wsp_r, tabla_contrapartes_rec)
+
+    _hoja_comprobantes_desde_dataframe(
+        wb, df_emitidos, "Comprobantes emitidos", True
+    )
+
+    wse = wb.create_sheet("Resumen emitidos")
+    _rellenar_hoja_resumen_excel(
+        wse,
+        totales_resumen_emit,
+        totales_detalle_emit,
+        suma_total_emit,
+        notas_credito_extras_emit,
+    )
+
+    wsd_e = wb.create_sheet("Distribución mensual Emitidos")
+    _rellenar_hoja_distribucion_excel(
+        wsd_e,
+        periodos_orden_emit,
+        columnas_orden,
+        totales_por_periodo_emit,
+        notas_credito_extras_emit,
+    )
+
+    wsp_e = wb.create_sheet("Clientes")
+    _rellenar_hoja_contrapartes_excel(wsp_e, tabla_contrapartes_emit)
 
     if isinstance(destino, io.BytesIO):
         destino.seek(0)

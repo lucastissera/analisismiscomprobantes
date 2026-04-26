@@ -35,6 +35,7 @@ from sumar_imp_total import (
     COLUMNAS_DETALLE_SIN_RESUMEN,
     COLUMNAS_TOTAL_RESUMEN,
     escribir_excel_informe_completo,
+    escribir_excel_informe_dual,
     periodos_orden_crono,
     procesar_archivo,
     total_resumen_pantalla,
@@ -230,13 +231,128 @@ def procesar():
     has_e = bool(f_emit and (f_emit.filename or "").strip())
     if not has_r and not has_e:
         return render_template("index.html", error=tr(lg, "err_select_file"))
+
+    def _ext_ok(n: str) -> bool:
+        nl = n.lower()
+        return nl.endswith(".xlsx") or nl.endswith(".csv")
+
     if has_r and has_e:
-        return render_template("index.html", error=tr(lg, "err_two_files"))
+        nombre_r = Path(f_rec.filename).name
+        nombre_e = Path(f_emit.filename).name
+        if not _ext_ok(nombre_r) or not _ext_ok(nombre_e):
+            return render_template("index.html", error=tr(lg, "err_only_xlsx_csv"))
+        try:
+            buf_r = io.BytesIO(f_rec.read())
+            buf_e = io.BytesIO(f_emit.read())
+            (
+                df_r,
+                tot_r,
+                tpp_r,
+                nce_r,
+                tabla_r,
+            ) = procesar_archivo(
+                buf_r,
+                0,
+                nombre_archivo=nombre_r,
+                ui_lang=lg,
+                emitidos=False,
+            )
+            (
+                df_e,
+                tot_e,
+                tpp_e,
+                nce_e,
+                tabla_e,
+            ) = procesar_archivo(
+                buf_e,
+                0,
+                nombre_archivo=nombre_e,
+                ui_lang=lg,
+                emitidos=True,
+            )
+        except ValueError as exc:
+            return render_template("index.html", error=str(exc))
+        except Exception as exc:
+            return render_template(
+                "index.html", error=tr(lg, "err_processing", exc=exc)
+            )
+
+        per_r = periodos_orden_crono(
+            tpp_r,
+            nce_r.get("neto_nc_por_periodo", {}),
+            nce_r.get("iva_nc_por_periodo", {}),
+        )
+        per_e = periodos_orden_crono(
+            tpp_e,
+            nce_e.get("neto_nc_por_periodo", {}),
+            nce_e.get("iva_nc_por_periodo", {}),
+        )
+        tres_r = {c: tot_r[c] for c in COLUMNAS_TOTAL_RESUMEN}
+        tdet_r = {c: tot_r[c] for c in COLUMNAS_DETALLE_SIN_RESUMEN}
+        tres_e = {c: tot_e[c] for c in COLUMNAS_TOTAL_RESUMEN}
+        tdet_e = {c: tot_e[c] for c in COLUMNAS_DETALLE_SIN_RESUMEN}
+
+        salida = io.BytesIO()
+        escribir_excel_informe_dual(
+            salida,
+            df_recibidos=df_r,
+            totales_por_periodo_rec=tpp_r,
+            periodos_orden_rec=per_r,
+            notas_credito_extras_rec=nce_r,
+            totales_resumen_rec=tres_r,
+            totales_detalle_rec=tdet_r,
+            suma_total_rec=round(total_resumen_pantalla(tot_r), 2),
+            tabla_contrapartes_rec=tabla_r,
+            df_emitidos=df_e,
+            totales_por_periodo_emit=tpp_e,
+            periodos_orden_emit=per_e,
+            notas_credito_extras_emit=nce_e,
+            totales_resumen_emit=tres_e,
+            totales_detalle_emit=tdet_e,
+            suma_total_emit=round(total_resumen_pantalla(tot_e), 2),
+            tabla_contrapartes_emit=tabla_e,
+            columnas_orden=COLUMNAS_A_AJUSTAR,
+        )
+        contenido = salida.getvalue()
+        nombre_salida = f"{Path(nombre_r).stem}_{Path(nombre_e).stem}_ajustado.xlsx"
+        download_id = uuid4().hex
+        DESCARGAS[download_id] = (contenido, nombre_salida, MIME_XLSX)
+
+        return render_template(
+            "index.html",
+            mostrar_resultado=True,
+            procesamiento_dual=True,
+            totales_resumen_recibidos=tres_r,
+            totales_detalle_recibidos=tdet_r,
+            suma_total_recibidos=round(total_resumen_pantalla(tot_r), 2),
+            totales_resumen_emitidos=tres_e,
+            totales_detalle_emitidos=tdet_e,
+            suma_total_emitidos=round(total_resumen_pantalla(tot_e), 2),
+            columnas_orden=COLUMNAS_A_AJUSTAR,
+            totales_por_periodo_recibidos=tpp_r,
+            periodos_orden_recibidos=per_r,
+            resumen_total_periodo_recibidos=totales_resumen_por_periodo(tpp_r),
+            total_neto_nc_recibidos=nce_r["total_neto_nc"],
+            total_iva_nc_recibidos=nce_r["total_iva_nc"],
+            neto_nc_por_periodo_recibidos=nce_r["neto_nc_por_periodo"],
+            iva_nc_por_periodo_recibidos=nce_r["iva_nc_por_periodo"],
+            totales_por_periodo_emitidos=tpp_e,
+            periodos_orden_emitidos=per_e,
+            resumen_total_periodo_emitidos=totales_resumen_por_periodo(tpp_e),
+            total_neto_nc_emitidos=nce_e["total_neto_nc"],
+            total_iva_nc_emitidos=nce_e["total_iva_nc"],
+            neto_nc_por_periodo_emitidos=nce_e["neto_nc_por_periodo"],
+            iva_nc_por_periodo_emitidos=nce_e["iva_nc_por_periodo"],
+            tabla_contrapartes_recibidos=tabla_r,
+            tabla_contrapartes_emitidos=tabla_e,
+            download_id=download_id,
+            nombre_salida=nombre_salida,
+        )
 
     emitidos = bool(has_e)
     archivo = f_emit if emitidos else f_rec
     nombre = Path(archivo.filename).name
-    if not (nombre.lower().endswith(".xlsx") or nombre.lower().endswith(".csv")):
+    if not _ext_ok(nombre):
         return render_template("index.html", error=tr(lg, "err_only_xlsx_csv"))
 
     try:
@@ -295,6 +411,7 @@ def procesar():
     return render_template(
         "index.html",
         mostrar_resultado=True,
+        procesamiento_dual=False,
         emitidos=emitidos,
         totales_resumen=totales_resumen,
         totales_detalle=totales_detalle,

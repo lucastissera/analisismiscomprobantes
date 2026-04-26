@@ -591,6 +591,21 @@
         font-size: 0.88rem;
         margin-bottom: 0.65rem;
       }
+      .resumen-grupo-lado {
+        flex: 1 1 380px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1rem;
+        align-items: flex-start;
+        min-width: 0;
+      }
+      .resumen-lado-titulo {
+        width: 100%;
+        margin: 0 0 0.25rem 0;
+        font-size: 1.05rem;
+        font-weight: 600;
+        color: var(--text-primary);
+      }
     </style>
   </head>
   <body>
@@ -798,6 +813,101 @@
           <details class="resultado-acordeon" id="acordeon-resumen" open>
             <summary class="resultado-acordeon-cabecera">{{ t('acordeon_resumen') }}</summary>
             <div class="resultado-acordeon-cuerpo">
+              {% if procesamiento_dual %}
+              <div class="tabla-resumen-anual resumen-fila-superior">
+                <div class="resumen-grupo-lado">
+                  <h3 class="resumen-lado-titulo">{{ t('processor_section_recibidos') }}</h3>
+                  <div class="resumen-bloque resumen-bloque-base">
+                    <h2>{{ t('resumen_h2') }}</h2>
+                    <p class="subtitulo-detalle">{{ t('resumen_help')|safe }}</p>
+                    <table class="tabla-resumen-base-total">
+                      <tbody>
+                        {% for columna, total in totales_resumen_recibidos.items() %}
+                        <tr>
+                          <td>{{ columna }}</td>
+                          <td>{{ total|fmt_ar }}</td>
+                        </tr>
+                        {% endfor %}
+                        <tr>
+                          <td><strong>{{ t('total_resumen_label') }}</strong></td>
+                          <td><strong>{{ suma_total_recibidos|fmt_ar }}</strong></td>
+                        </tr>
+                        <tr>
+                          <td>{{ t('notas_credito_neto_fila') }}</td>
+                          <td>{{ total_neto_nc_recibidos|fmt_ar }}</td>
+                        </tr>
+                        <tr>
+                          <td>{{ t('notas_credito_iva_fila') }}</td>
+                          <td>{{ total_iva_nc_recibidos|fmt_ar }}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                  {% if totales_detalle_recibidos %}
+                  <div class="resumen-sep-gruesa" role="presentation" aria-hidden="true"></div>
+                  <div class="resumen-bloque resumen-bloque-alicuota">
+                    <h2>{{ t('detalle_alicuota_h3') }}</h2>
+                    <table class="tabla-resumen-detalle">
+                      <tbody>
+                        {% for columna, total in totales_detalle_recibidos.items() %}
+                        <tr>
+                          <td>{{ columna }}</td>
+                          <td>{{ total|fmt_ar }}</td>
+                        </tr>
+                        {% endfor %}
+                      </tbody>
+                    </table>
+                  </div>
+                  {% endif %}
+                </div>
+                <div class="resumen-sep-gruesa" role="presentation" aria-hidden="true"></div>
+                <div class="resumen-grupo-lado">
+                  <h3 class="resumen-lado-titulo">{{ t('processor_section_emitidos') }}</h3>
+                  <div class="resumen-bloque resumen-bloque-base">
+                    <h2>{{ t('resumen_h2') }}</h2>
+                    <p class="subtitulo-detalle">{{ t('resumen_help')|safe }}</p>
+                    <table class="tabla-resumen-base-total">
+                      <tbody>
+                        {% for columna, total in totales_resumen_emitidos.items() %}
+                        <tr>
+                          <td>{{ columna }}</td>
+                          <td>{{ total|fmt_ar }}</td>
+                        </tr>
+                        {% endfor %}
+                        <tr>
+                          <td><strong>{{ t('total_resumen_label') }}</strong></td>
+                          <td><strong>{{ suma_total_emitidos|fmt_ar }}</strong></td>
+                        </tr>
+                        <tr>
+                          <td>{{ t('notas_credito_neto_fila') }}</td>
+                          <td>{{ total_neto_nc_emitidos|fmt_ar }}</td>
+                        </tr>
+                        <tr>
+                          <td>{{ t('notas_credito_iva_fila') }}</td>
+                          <td>{{ total_iva_nc_emitidos|fmt_ar }}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                  {% if totales_detalle_emitidos %}
+                  <div class="resumen-sep-gruesa" role="presentation" aria-hidden="true"></div>
+                  <div class="resumen-bloque resumen-bloque-alicuota">
+                    <h2>{{ t('detalle_alicuota_h3') }}</h2>
+                    <table class="tabla-resumen-detalle">
+                      <tbody>
+                        {% for columna, total in totales_detalle_emitidos.items() %}
+                        <tr>
+                          <td>{{ columna }}</td>
+                          <td>{{ total|fmt_ar }}</td>
+                        </tr>
+                        {% endfor %}
+                      </tbody>
+                    </table>
+                  </div>
+                  {% endif %}
+                </div>
+              </div>
+              {% else %}
               <div class="tabla-resumen-anual resumen-fila-superior">
                 <div class="resumen-bloque resumen-bloque-base">
                   <h2>{{ t('resumen_h2') }}</h2>
@@ -843,9 +953,176 @@
                 </div>
                 {% endif %}
               </div>
+              {% endif %}
             </div>
           </details>
 
+          {% if procesamiento_dual %}
+          <details class="resultado-acordeon" id="acordeon-distrib-mensual-recibidos">
+            <summary class="resultado-acordeon-cabecera">{{ t('acordeon_distrib_mensual_recibidos') }}</summary>
+            <div class="resultado-acordeon-cuerpo">
+              <div class="tabla-meses-wrap">
+                <h2>{{ t('por_mes_h2') }}</h2>
+                <p class="subtitulo-detalle">{{ t('por_mes_help') }}</p>
+                <table class="tabla-meses">
+                  <thead>
+                    <tr>
+                      <th>{{ t('concepto_th') }}</th>
+                      {% for per in periodos_orden_recibidos %}
+                      {% set mi = per[5:7]|int %}
+                      <th scope="col" class="th-periodo">
+                        <span class="th-periodo-inner">
+                          <span class="th-periodo-mes">{{ nombres_meses[mi - 1]|capitalize }}</span>
+                          <span class="th-periodo-anio">{{ per[0:4] }}</span>
+                        </span>
+                      </th>
+                      {% endfor %}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for columna in columnas_orden %}
+                    <tr>
+                      <td>{{ columna }}</td>
+                      {% for per in periodos_orden_recibidos %}
+                      <td>{{ (totales_por_periodo_recibidos.get(per) or {}).get(columna, 0)|fmt_ar }}</td>
+                      {% endfor %}
+                    </tr>
+                    {% endfor %}
+                    <tr>
+                      <td><strong>{{ t('total_resumen_label') }}</strong></td>
+                      {% for per in periodos_orden_recibidos %}
+                      <td><strong>{{ resumen_total_periodo_recibidos.get(per, 0)|fmt_ar }}</strong></td>
+                      {% endfor %}
+                    </tr>
+                    <tr>
+                      <td>{{ t('notas_credito_neto_fila') }}</td>
+                      {% for per in periodos_orden_recibidos %}
+                      <td>{{ neto_nc_por_periodo_recibidos.get(per, 0)|fmt_ar }}</td>
+                      {% endfor %}
+                    </tr>
+                    <tr>
+                      <td>{{ t('notas_credito_iva_fila') }}</td>
+                      {% for per in periodos_orden_recibidos %}
+                      <td>{{ iva_nc_por_periodo_recibidos.get(per, 0)|fmt_ar }}</td>
+                      {% endfor %}
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </details>
+          <details class="resultado-acordeon" id="acordeon-distrib-mensual-emitidos">
+            <summary class="resultado-acordeon-cabecera">{{ t('acordeon_distrib_mensual_emitidos') }}</summary>
+            <div class="resultado-acordeon-cuerpo">
+              <div class="tabla-meses-wrap">
+                <h2>{{ t('por_mes_h2') }}</h2>
+                <p class="subtitulo-detalle">{{ t('por_mes_help') }}</p>
+                <table class="tabla-meses">
+                  <thead>
+                    <tr>
+                      <th>{{ t('concepto_th') }}</th>
+                      {% for per in periodos_orden_emitidos %}
+                      {% set mi = per[5:7]|int %}
+                      <th scope="col" class="th-periodo">
+                        <span class="th-periodo-inner">
+                          <span class="th-periodo-mes">{{ nombres_meses[mi - 1]|capitalize }}</span>
+                          <span class="th-periodo-anio">{{ per[0:4] }}</span>
+                        </span>
+                      </th>
+                      {% endfor %}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for columna in columnas_orden %}
+                    <tr>
+                      <td>{{ columna }}</td>
+                      {% for per in periodos_orden_emitidos %}
+                      <td>{{ (totales_por_periodo_emitidos.get(per) or {}).get(columna, 0)|fmt_ar }}</td>
+                      {% endfor %}
+                    </tr>
+                    {% endfor %}
+                    <tr>
+                      <td><strong>{{ t('total_resumen_label') }}</strong></td>
+                      {% for per in periodos_orden_emitidos %}
+                      <td><strong>{{ resumen_total_periodo_emitidos.get(per, 0)|fmt_ar }}</strong></td>
+                      {% endfor %}
+                    </tr>
+                    <tr>
+                      <td>{{ t('notas_credito_neto_fila') }}</td>
+                      {% for per in periodos_orden_emitidos %}
+                      <td>{{ neto_nc_por_periodo_emitidos.get(per, 0)|fmt_ar }}</td>
+                      {% endfor %}
+                    </tr>
+                    <tr>
+                      <td>{{ t('notas_credito_iva_fila') }}</td>
+                      {% for per in periodos_orden_emitidos %}
+                      <td>{{ iva_nc_por_periodo_emitidos.get(per, 0)|fmt_ar }}</td>
+                      {% endfor %}
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </details>
+          <details class="resultado-acordeon" id="acordeon-proveedores">
+            <summary class="resultado-acordeon-cabecera">{{ t('acordeon_proveedores') }}</summary>
+            <div class="resultado-acordeon-cuerpo">
+              <div class="tabla-meses-wrap">
+                <table class="tabla-meses tabla-contrapartes">
+                  <thead>
+                    <tr>
+                      <th>{{ t('informe_th_nombre') }}</th>
+                      <th>{{ t('informe_th_cuit') }}</th>
+                      <th>{{ t('informe_th_neto') }}</th>
+                      <th>{{ t('informe_th_iva') }}</th>
+                      <th>{{ t('informe_th_total') }}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for pr in tabla_contrapartes_recibidos %}
+                    <tr>
+                      <td>{{ pr.nombre }}</td>
+                      <td>{{ pr.cuit }}</td>
+                      <td>{{ pr.neto|fmt_ar }}</td>
+                      <td>{{ pr.iva|fmt_ar }}</td>
+                      <td>{{ pr.total|fmt_ar }}</td>
+                    </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </details>
+          <details class="resultado-acordeon" id="acordeon-clientes">
+            <summary class="resultado-acordeon-cabecera">{{ t('acordeon_clientes') }}</summary>
+            <div class="resultado-acordeon-cuerpo">
+              <div class="tabla-meses-wrap">
+                <table class="tabla-meses tabla-contrapartes">
+                  <thead>
+                    <tr>
+                      <th>{{ t('informe_th_nombre') }}</th>
+                      <th>{{ t('informe_th_cuit') }}</th>
+                      <th>{{ t('informe_th_neto') }}</th>
+                      <th>{{ t('informe_th_iva') }}</th>
+                      <th>{{ t('informe_th_total') }}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for pr in tabla_contrapartes_emitidos %}
+                    <tr>
+                      <td>{{ pr.nombre }}</td>
+                      <td>{{ pr.cuit }}</td>
+                      <td>{{ pr.neto|fmt_ar }}</td>
+                      <td>{{ pr.iva|fmt_ar }}</td>
+                      <td>{{ pr.total|fmt_ar }}</td>
+                    </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </details>
+          {% else %}
           <details class="resultado-acordeon" id="acordeon-distrib-mensual">
             <summary class="resultado-acordeon-cabecera">{{ t('acordeon_distrib_mensual') }}</summary>
             <div class="resultado-acordeon-cuerpo">
@@ -963,6 +1240,7 @@
             </div>
           </details>
           {% endif %}
+          {% endif %}
         </div>
 
         {% if download_id %}
@@ -1059,16 +1337,6 @@
           el.textContent = msg;
         }
 
-        function limpiarOtro(ladoActivo) {
-          if (ladoActivo === "recibidos") {
-            inputE.value = "";
-            vaciarNombre(nombreE);
-          } else {
-            inputR.value = "";
-            vaciarNombre(nombreR);
-          }
-        }
-
         function asignarArchivo(input, nombreEl, file) {
           var dt = new DataTransfer();
           dt.items.add(file);
@@ -1076,12 +1344,11 @@
           mostrarNombreArchivo(nombreEl, file);
         }
 
-        function wireZona(zona, input, nombreEl, btnElegir, otroLado) {
+        function wireZona(zona, input, nombreEl, btnElegir) {
           input.addEventListener("change", function () {
             if (input.files && input.files.length) {
               var f = input.files[0];
               if (esValido(f)) {
-                limpiarOtro(otroLado);
                 mostrarNombreArchivo(nombreEl, f);
               } else {
                 mostrarError(nombreEl, I18N.err_invalid_ext || "");
@@ -1127,13 +1394,12 @@
               mostrarError(nombreEl, I18N.err_invalid_ext || "");
               return;
             }
-            limpiarOtro(otroLado);
             asignarArchivo(input, nombreEl, f);
           });
         }
 
-        wireZona(zonaR, inputR, nombreR, btnR, "recibidos");
-        wireZona(zonaE, inputE, nombreE, btnE, "emitidos");
+        wireZona(zonaR, inputR, nombreR, btnR);
+        wireZona(zonaE, inputE, nombreE, btnE);
       })();
     </script>
   </body>
