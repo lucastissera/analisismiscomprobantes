@@ -34,10 +34,13 @@ from sumar_imp_total import (
     COLUMNAS_A_AJUSTAR,
     COLUMNAS_DETALLE_SIN_RESUMEN,
     COLUMNAS_TOTAL_RESUMEN,
+    enriquecer_contrapartes_con_imputacion,
     escribir_excel_informe_completo,
     escribir_excel_informe_dual,
+    leer_mapa_imputaciones_desde_archivo,
     periodos_orden_crono,
     procesar_archivo,
+    resumen_totales_por_imputacion,
     total_resumen_pantalla,
     totales_resumen_por_periodo,
 )
@@ -227,14 +230,33 @@ def procesar():
     lg = normalize_lang(session.get("lang"))
     f_rec = request.files.get("excel_recibidos")
     f_emit = request.files.get("excel_emitidos")
+    f_imp = request.files.get("excel_imputaciones")
     has_r = bool(f_rec and (f_rec.filename or "").strip())
     has_e = bool(f_emit and (f_emit.filename or "").strip())
+    has_imp = bool(f_imp and (f_imp.filename or "").strip())
     if not has_r and not has_e:
         return render_template("index.html", error=tr(lg, "err_select_file"))
 
     def _ext_ok(n: str) -> bool:
         nl = n.lower()
         return nl.endswith(".xlsx") or nl.endswith(".csv")
+
+    mapa_imputaciones = None
+    if has_imp:
+        nombre_imp = Path(f_imp.filename).name
+        if not _ext_ok(nombre_imp):
+            return render_template("index.html", error=tr(lg, "err_only_xlsx_csv"))
+        try:
+            buf_imp = io.BytesIO(f_imp.read())
+            mapa_imputaciones = leer_mapa_imputaciones_desde_archivo(
+                buf_imp,
+                nombre_archivo=nombre_imp,
+                ui_lang=lg,
+            )
+        except ValueError as exc:
+            return render_template("index.html", error=str(exc))
+
+    con_cols_imp = mapa_imputaciones is not None
 
     if has_r and has_e:
         nombre_r = Path(f_rec.filename).name
@@ -277,6 +299,15 @@ def procesar():
                 "index.html", error=tr(lg, "err_processing", exc=exc)
             )
 
+        tabla_r = enriquecer_contrapartes_con_imputacion(tabla_r, mapa_imputaciones)
+        tabla_e = enriquecer_contrapartes_con_imputacion(tabla_e, mapa_imputaciones)
+        res_imp_r = (
+            resumen_totales_por_imputacion(tabla_r) if con_cols_imp else None
+        )
+        res_imp_e = (
+            resumen_totales_por_imputacion(tabla_e) if con_cols_imp else None
+        )
+
         per_r = periodos_orden_crono(
             tpp_r,
             nce_r.get("neto_nc_por_periodo", {}),
@@ -312,6 +343,9 @@ def procesar():
             suma_total_emit=round(total_resumen_pantalla(tot_e), 2),
             tabla_contrapartes_emit=tabla_e,
             columnas_orden=COLUMNAS_A_AJUSTAR,
+            resumen_imputacion_rec=res_imp_r,
+            resumen_imputacion_emit=res_imp_e,
+            con_columnas_imputacion_en_contrapartes=con_cols_imp,
         )
         contenido = salida.getvalue()
         nombre_salida = f"{Path(nombre_r).stem}_{Path(nombre_e).stem}_ajustado.xlsx"
@@ -347,6 +381,9 @@ def procesar():
             tabla_contrapartes_emitidos=tabla_e,
             download_id=download_id,
             nombre_salida=nombre_salida,
+            imputacion_activa=con_cols_imp,
+            resumen_imputacion_recibidos=res_imp_r,
+            resumen_imputacion_emitidos=res_imp_e,
         )
 
     emitidos = bool(has_e)
@@ -378,6 +415,14 @@ def procesar():
             "index.html", error=tr(lg, "err_processing", exc=exc)
         )
 
+    tabla_contrapartes = enriquecer_contrapartes_con_imputacion(
+        tabla_contrapartes,
+        mapa_imputaciones,
+    )
+    res_imp = (
+        resumen_totales_por_imputacion(tabla_contrapartes) if con_cols_imp else None
+    )
+
     salida = io.BytesIO()
     periodos_orden = periodos_orden_crono(
         totales_por_periodo,
@@ -399,6 +444,8 @@ def procesar():
         suma_total=round(total_resumen_pantalla(totales), 2),
         columnas_orden=COLUMNAS_A_AJUSTAR,
         tabla_contrapartes=tabla_contrapartes,
+        resumen_imputacion=res_imp,
+        con_columnas_imputacion_en_contrapartes=con_cols_imp,
     )
     contenido = salida.getvalue()
 
@@ -427,6 +474,8 @@ def procesar():
         tabla_contrapartes=tabla_contrapartes,
         download_id=download_id,
         nombre_salida=nombre_salida,
+        imputacion_activa=con_cols_imp,
+        resumen_imputacion=res_imp,
     )
 
 

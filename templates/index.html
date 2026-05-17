@@ -566,6 +566,19 @@
         white-space: nowrap;
         border: 0;
       }
+      .importacion-ref-imputacion {
+        margin-bottom: 1rem;
+        border: 1px solid var(--border-soft);
+        border-radius: 8px;
+        padding: 0.85rem 1rem;
+        background: var(--bg-body);
+      }
+      .importacion-ref-imputacion h3 {
+        margin: 0 0 0.35rem 0;
+        font-size: 1.05rem;
+        font-weight: bold;
+        color: var(--text-primary);
+      }
       .importacion-dual {
         display: flex;
         flex-wrap: wrap;
@@ -741,6 +754,35 @@
             enctype="multipart/form-data"
             id="form-procesar-comprobantes"
           >
+            <div class="importacion-ref-imputacion" id="bloque-imputaciones">
+              <h3>{{ t('processor_section_imputaciones') }}</h3>
+              <p class="subtitulo-detalle">{{ t('processor_section_imputaciones_help')|safe }}</p>
+              <div class="zona-soltar-wrap">
+                <div
+                  class="zona-soltar-archivo"
+                  id="zona-soltar-imputaciones"
+                  role="group"
+                  aria-label="{{ t('drop_zone_aria') }} — {{ t('processor_section_imputaciones') }}"
+                >
+                  <input
+                    id="excel-imputaciones"
+                    name="excel_imputaciones"
+                    type="file"
+                    accept=".xlsx,.csv"
+                    class="input-archivo-oculto"
+                  />
+                  <p class="zona-soltar-texto" id="ayuda-soltar-imputaciones">
+                    {{ t('drop_text_1')|safe }}
+                    <button type="button" class="btn-elegir-archivo" id="btn-elegir-imputaciones">{{ t('choose_file_btn') }}</button>{{ t('drop_text_2') }}
+                  </p>
+                  <p
+                    class="zona-soltar-nombre archivo-seleccionado-vacio"
+                    id="nombre-archivo-imputaciones"
+                    aria-live="polite"
+                  ></p>
+                </div>
+              </div>
+            </div>
             <div class="importacion-dual">
               <div class="importacion-bloque" id="bloque-recibidos">
                 <h3>{{ t('processor_section_recibidos') }}</h3>
@@ -1073,6 +1115,10 @@
                     <tr>
                       <th>{{ t('informe_th_nombre') }}</th>
                       <th>{{ t('informe_th_cuit') }}</th>
+                      {% if imputacion_activa|default(false) %}
+                      <th>{{ t('informe_th_cod_imputacion') }}</th>
+                      <th>{{ t('informe_th_nom_imputacion') }}</th>
+                      {% endif %}
                       <th>{{ t('informe_th_neto') }}</th>
                       <th>{{ t('informe_th_iva') }}</th>
                       <th>{{ t('informe_th_total') }}</th>
@@ -1083,6 +1129,10 @@
                     <tr>
                       <td>{{ pr.nombre }}</td>
                       <td>{{ pr.cuit }}</td>
+                      {% if imputacion_activa|default(false) %}
+                      <td>{{ pr.codigo_imputacion }}</td>
+                      <td>{{ pr.nombre_imputacion }}</td>
+                      {% endif %}
                       <td>{{ pr.neto|fmt_ar }}</td>
                       <td>{{ pr.iva|fmt_ar }}</td>
                       <td>{{ pr.total|fmt_ar }}</td>
@@ -1093,6 +1143,37 @@
               </div>
             </div>
           </details>
+          {% if imputacion_activa|default(false) %}
+          <details class="resultado-acordeon" id="acordeon-resumen-imputacion-recibidos">
+            <summary class="resultado-acordeon-cabecera">{{ t('acordeon_resumen_imputacion') }} — {{ t('processor_section_recibidos') }}</summary>
+            <div class="resultado-acordeon-cuerpo">
+              <div class="tabla-meses-wrap">
+                <table class="tabla-meses tabla-contrapartes">
+                  <thead>
+                    <tr>
+                      <th>{{ t('informe_th_cod_imputacion') }}</th>
+                      <th>{{ t('informe_th_nom_imputacion') }}</th>
+                      <th>{{ t('informe_th_neto') }}</th>
+                      <th>{{ t('informe_th_iva') }}</th>
+                      <th>{{ t('informe_th_total') }}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for row in resumen_imputacion_recibidos %}
+                    <tr>
+                      <td>{{ row.codigo_imputacion }}</td>
+                      <td>{{ row.nombre_imputacion }}</td>
+                      <td>{{ row.neto|fmt_ar }}</td>
+                      <td>{{ row.iva|fmt_ar }}</td>
+                      <td>{{ row.total|fmt_ar }}</td>
+                    </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </details>
+          {% endif %}
           <details class="resultado-acordeon" id="acordeon-clientes">
             <summary class="resultado-acordeon-cabecera">{{ t('acordeon_clientes') }}</summary>
             <div class="resultado-acordeon-cuerpo">
@@ -1102,6 +1183,10 @@
                     <tr>
                       <th>{{ t('informe_th_nombre') }}</th>
                       <th>{{ t('informe_th_cuit') }}</th>
+                      {% if imputacion_activa|default(false) %}
+                      <th>{{ t('informe_th_cod_imputacion') }}</th>
+                      <th>{{ t('informe_th_nom_imputacion') }}</th>
+                      {% endif %}
                       <th>{{ t('informe_th_neto') }}</th>
                       <th>{{ t('informe_th_iva') }}</th>
                       <th>{{ t('informe_th_total') }}</th>
@@ -1112,6 +1197,10 @@
                     <tr>
                       <td>{{ pr.nombre }}</td>
                       <td>{{ pr.cuit }}</td>
+                      {% if imputacion_activa|default(false) %}
+                      <td>{{ pr.codigo_imputacion }}</td>
+                      <td>{{ pr.nombre_imputacion }}</td>
+                      {% endif %}
                       <td>{{ pr.neto|fmt_ar }}</td>
                       <td>{{ pr.iva|fmt_ar }}</td>
                       <td>{{ pr.total|fmt_ar }}</td>
@@ -1122,6 +1211,37 @@
               </div>
             </div>
           </details>
+          {% if imputacion_activa|default(false) %}
+          <details class="resultado-acordeon" id="acordeon-resumen-imputacion-emitidos">
+            <summary class="resultado-acordeon-cabecera">{{ t('acordeon_resumen_imputacion') }} — {{ t('processor_section_emitidos') }}</summary>
+            <div class="resultado-acordeon-cuerpo">
+              <div class="tabla-meses-wrap">
+                <table class="tabla-meses tabla-contrapartes">
+                  <thead>
+                    <tr>
+                      <th>{{ t('informe_th_cod_imputacion') }}</th>
+                      <th>{{ t('informe_th_nom_imputacion') }}</th>
+                      <th>{{ t('informe_th_neto') }}</th>
+                      <th>{{ t('informe_th_iva') }}</th>
+                      <th>{{ t('informe_th_total') }}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for row in resumen_imputacion_emitidos %}
+                    <tr>
+                      <td>{{ row.codigo_imputacion }}</td>
+                      <td>{{ row.nombre_imputacion }}</td>
+                      <td>{{ row.neto|fmt_ar }}</td>
+                      <td>{{ row.iva|fmt_ar }}</td>
+                      <td>{{ row.total|fmt_ar }}</td>
+                    </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </details>
+          {% endif %}
           {% else %}
           <details class="resultado-acordeon" id="acordeon-distrib-mensual">
             <summary class="resultado-acordeon-cabecera">{{ t('acordeon_distrib_mensual') }}</summary>
@@ -1187,6 +1307,10 @@
                     <tr>
                       <th>{{ t('informe_th_nombre') }}</th>
                       <th>{{ t('informe_th_cuit') }}</th>
+                      {% if imputacion_activa|default(false) %}
+                      <th>{{ t('informe_th_cod_imputacion') }}</th>
+                      <th>{{ t('informe_th_nom_imputacion') }}</th>
+                      {% endif %}
                       <th>{{ t('informe_th_neto') }}</th>
                       <th>{{ t('informe_th_iva') }}</th>
                       <th>{{ t('informe_th_total') }}</th>
@@ -1197,6 +1321,10 @@
                     <tr>
                       <td>{{ pr.nombre }}</td>
                       <td>{{ pr.cuit }}</td>
+                      {% if imputacion_activa|default(false) %}
+                      <td>{{ pr.codigo_imputacion }}</td>
+                      <td>{{ pr.nombre_imputacion }}</td>
+                      {% endif %}
                       <td>{{ pr.neto|fmt_ar }}</td>
                       <td>{{ pr.iva|fmt_ar }}</td>
                       <td>{{ pr.total|fmt_ar }}</td>
@@ -1207,6 +1335,37 @@
               </div>
             </div>
           </details>
+          {% if imputacion_activa|default(false) %}
+          <details class="resultado-acordeon" id="acordeon-resumen-imputacion">
+            <summary class="resultado-acordeon-cabecera">{{ t('acordeon_resumen_imputacion') }}</summary>
+            <div class="resultado-acordeon-cuerpo">
+              <div class="tabla-meses-wrap">
+                <table class="tabla-meses tabla-contrapartes">
+                  <thead>
+                    <tr>
+                      <th>{{ t('informe_th_cod_imputacion') }}</th>
+                      <th>{{ t('informe_th_nom_imputacion') }}</th>
+                      <th>{{ t('informe_th_neto') }}</th>
+                      <th>{{ t('informe_th_iva') }}</th>
+                      <th>{{ t('informe_th_total') }}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for row in resumen_imputacion %}
+                    <tr>
+                      <td>{{ row.codigo_imputacion }}</td>
+                      <td>{{ row.nombre_imputacion }}</td>
+                      <td>{{ row.neto|fmt_ar }}</td>
+                      <td>{{ row.iva|fmt_ar }}</td>
+                      <td>{{ row.total|fmt_ar }}</td>
+                    </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </details>
+          {% endif %}
           {% endif %}
 
           {% if emitidos %}
@@ -1219,6 +1378,10 @@
                     <tr>
                       <th>{{ t('informe_th_nombre') }}</th>
                       <th>{{ t('informe_th_cuit') }}</th>
+                      {% if imputacion_activa|default(false) %}
+                      <th>{{ t('informe_th_cod_imputacion') }}</th>
+                      <th>{{ t('informe_th_nom_imputacion') }}</th>
+                      {% endif %}
                       <th>{{ t('informe_th_neto') }}</th>
                       <th>{{ t('informe_th_iva') }}</th>
                       <th>{{ t('informe_th_total') }}</th>
@@ -1229,6 +1392,10 @@
                     <tr>
                       <td>{{ pr.nombre }}</td>
                       <td>{{ pr.cuit }}</td>
+                      {% if imputacion_activa|default(false) %}
+                      <td>{{ pr.codigo_imputacion }}</td>
+                      <td>{{ pr.nombre_imputacion }}</td>
+                      {% endif %}
                       <td>{{ pr.neto|fmt_ar }}</td>
                       <td>{{ pr.iva|fmt_ar }}</td>
                       <td>{{ pr.total|fmt_ar }}</td>
@@ -1239,6 +1406,37 @@
               </div>
             </div>
           </details>
+          {% if imputacion_activa|default(false) %}
+          <details class="resultado-acordeon" id="acordeon-resumen-imputacion-emitidos-solo">
+            <summary class="resultado-acordeon-cabecera">{{ t('acordeon_resumen_imputacion') }}</summary>
+            <div class="resultado-acordeon-cuerpo">
+              <div class="tabla-meses-wrap">
+                <table class="tabla-meses tabla-contrapartes">
+                  <thead>
+                    <tr>
+                      <th>{{ t('informe_th_cod_imputacion') }}</th>
+                      <th>{{ t('informe_th_nom_imputacion') }}</th>
+                      <th>{{ t('informe_th_neto') }}</th>
+                      <th>{{ t('informe_th_iva') }}</th>
+                      <th>{{ t('informe_th_total') }}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for row in resumen_imputacion %}
+                    <tr>
+                      <td>{{ row.codigo_imputacion }}</td>
+                      <td>{{ row.nombre_imputacion }}</td>
+                      <td>{{ row.neto|fmt_ar }}</td>
+                      <td>{{ row.iva|fmt_ar }}</td>
+                      <td>{{ row.total|fmt_ar }}</td>
+                    </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </details>
+          {% endif %}
           {% endif %}
           {% endif %}
         </div>
@@ -1400,6 +1598,14 @@
 
         wireZona(zonaR, inputR, nombreR, btnR);
         wireZona(zonaE, inputE, nombreE, btnE);
+
+        var inputI = document.getElementById("excel-imputaciones");
+        var zonaI = document.getElementById("zona-soltar-imputaciones");
+        var nombreI = document.getElementById("nombre-archivo-imputaciones");
+        var btnI = document.getElementById("btn-elegir-imputaciones");
+        if (inputI && zonaI && nombreI) {
+          wireZona(zonaI, inputI, nombreI, btnI);
+        }
       })();
     </script>
   </body>
