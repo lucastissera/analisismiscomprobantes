@@ -1,5 +1,6 @@
 import io
 import os
+import sys
 import time
 from datetime import timedelta
 from pathlib import Path
@@ -18,7 +19,24 @@ except ImportError:
 if os.environ.get("RENDER", "").strip().lower() not in ("true", "1", "yes"):
     os.environ.setdefault("CUIT_EN_ARCA_PLAYWRIGHT", "1")
 
-from flask import Flask, redirect, render_template, request, send_file, session, url_for
+from flask import (
+    Flask,
+    abort,
+    flash,
+    redirect,
+    render_template,
+    request,
+    send_file,
+    session,
+    url_for,
+)
+
+if getattr(sys, "frozen", False):
+    _bundle = Path(getattr(sys, "_MEIPASS", _APP_ROOT))
+    _tpl = _bundle / "templates"
+    app = Flask(__name__, root_path=str(_bundle), template_folder=str(_tpl))
+else:
+    app = Flask(__name__)
 
 from auth import verify_credentials, whatsapp_new_user_url
 from cuit_en_arca import ArcaProcesoError, ejecutar_flujo_cuit_en_arca
@@ -30,6 +48,16 @@ from i18n import (
     tr,
     tr_js_bundle,
 )
+from plantillas_imputacion import (
+    agregar_plantilla,
+    eliminar_plantilla,
+    leer_bytes_plantilla,
+    listar_plantillas,
+    plantillas_imputacion_disponibles,
+    renombrar_plantilla,
+    reemplazar_archivo_plantilla,
+)
+
 from sumar_imp_total import (
     COLUMNAS_A_AJUSTAR,
     COLUMNAS_DETALLE_SIN_RESUMEN,
@@ -45,7 +73,6 @@ from sumar_imp_total import (
     totales_resumen_por_periodo,
 )
 
-app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-cambiar-en-produccion")
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(minutes=30)
 app.config["SESSION_REFRESH_EACH_REQUEST"] = True
@@ -151,6 +178,67 @@ def _inject_i18n():
     }
 
 
+def _mapa_imputaciones_desde_peticion(
+    lg: str,
+) -> tuple[dict[str, tuple[str, str]] | None, str | None, bytes | None, str | None]:
+    """
+    Devuelve (mapa_cuit_imputacion | None, mensaje_error | None, bytes_archivo_si_subido, nombre_orig_archivo).
+    """
+    f_imp = request.files.get("excel_imputaciones")
+    has_file = bool(
+        f_imp and getattr(f_imp, "filename", None) and str(f_imp.filename).strip()
+    )
+    plantilla_id = (request.form.get("plantilla_imputacion_id") or "").strip()
+
+    if has_file and plantilla_id and plantillas_imputacion_disponibles():
+        return None, tr(lg, "err_imputacion_archivo_y_plantilla"), None, None
+
+    if plantillas_imputacion_disponibles() and plantilla_id and not has_file:
+        try:
+            raw, nombre = leer_bytes_plantilla(plantilla_id)
+            buf = io.BytesIO(raw)
+            mapa = leer_mapa_imputaciones_desde_archivo(
+                buf, nombre_archivo=nombre, ui_lang=lg
+            )
+            return mapa, None, None, None
+        except FileNotFoundError:
+            return None, tr(lg, "err_plantilla_imputacion_no_encontrada"), None, None
+        except ValueError as exc:
+            return None, str(exc), None, None
+
+    if has_file:
+        nombre_imp = Path(f_imp.filename).name
+        nl = nombre_imp.lower()
+        if not (nl.endswith(".xlsx") or nl.endswith(".csv")):
+            return None, tr(lg, "err_only_xlsx_csv"), None, None
+        datos = f_imp.read()
+        buf_imp = io.BytesIO(datos)
+        try:
+            mapa = leer_mapa_imputaciones_desde_archivo(
+                buf_imp, nombre_archivo=nombre_imp, ui_lang=lg
+            )
+            return mapa, None, datos, nombre_imp
+        except ValueError as exc:
+            return None, str(exc), None, None
+
+    return None, None, None, None
+
+
+@app.context_processor
+def _inject_plantillas_imputacion():
+    if plantillas_imputacion_disponibles():
+        try:
+            lista = listar_plantillas()
+        except OSError:
+            lista = []
+    else:
+        lista = []
+    return {
+        "plantillas_imputacion_ui": plantillas_imputacion_disponibles(),
+        "plantillas_imputacion_lista": lista,
+    }
+
+
 @app.get("/set-lang/<code>")
 def set_lang(code: str):
     session["lang"] = normalize_lang(code)
@@ -230,10 +318,8 @@ def procesar():
     lg = normalize_lang(session.get("lang"))
     f_rec = request.files.get("excel_recibidos")
     f_emit = request.files.get("excel_emitidos")
-    f_imp = request.files.get("excel_imputaciones")
     has_r = bool(f_rec and (f_rec.filename or "").strip())
     has_e = bool(f_emit and (f_emit.filename or "").strip())
-    has_imp = bool(f_imp and (f_imp.filename or "").strip())
     if not has_r and not has_e:
         return render_template("index.html", error=tr(lg, "err_select_file"))
 
@@ -241,20 +327,27 @@ def procesar():
         nl = n.lower()
         return nl.endswith(".xlsx") or nl.endswith(".csv")
 
-    mapa_imputaciones = None
-    if has_imp:
-        nombre_imp = Path(f_imp.filename).name
-        if not _ext_ok(nombre_imp):
-            return render_template("index.html", error=tr(lg, "err_only_xlsx_csv"))
+    mapa_imputaciones, err_imp, datos_imp_bytes, imp_nombre_orig = (
+        _mapa_imputaciones_desde_peticion(lg)
+    )
+    if err_imp:
+        return render_template("index.html", error=err_imp)
+
+    nombre_guardar = (request.form.get("nombre_nueva_plantilla_imputacion") or "").strip()
+    if (
+        plantillas_imputacion_disponibles()
+        and nombre_guardar
+        and datos_imp_bytes is not None
+        and imp_nombre_orig
+    ):
         try:
-            buf_imp = io.BytesIO(f_imp.read())
-            mapa_imputaciones = leer_mapa_imputaciones_desde_archivo(
-                buf_imp,
-                nombre_archivo=nombre_imp,
-                ui_lang=lg,
-            )
+            agregar_plantilla(nombre_guardar, datos_imp_bytes, imp_nombre_orig)
+            flash(tr(lg, "flash_plantilla_guardada_ok", nombre=nombre_guardar), "success")
         except ValueError as exc:
-            return render_template("index.html", error=str(exc))
+            if str(exc) == "nombre_duplicado":
+                flash(tr(lg, "flash_plantilla_nombre_duplicado"), "warning")
+            elif str(exc) == "nombre_vacio":
+                pass
 
     con_cols_imp = mapa_imputaciones is not None
 
@@ -476,6 +569,63 @@ def procesar():
         nombre_salida=nombre_salida,
         imputacion_activa=con_cols_imp,
         resumen_imputacion=res_imp,
+    )
+
+
+@app.route("/plantillas-imputaciones", methods=["GET", "POST"])
+def plantillas_imputaciones():
+    if not plantillas_imputacion_disponibles():
+        abort(404)
+    lg = normalize_lang(session.get("lang"))
+    if request.method == "POST":
+        accion = (request.form.get("accion") or "").strip()
+        pid = (request.form.get("plantilla_id") or "").strip()
+        try:
+            if accion == "renombrar":
+                nuevo = (request.form.get("nuevo_nombre") or "").strip()
+                renombrar_plantilla(pid, nuevo)
+                flash(tr(lg, "flash_plantilla_renombrada"), "success")
+            elif accion == "reemplazar":
+                f_rep = request.files.get("nuevo_archivo")
+                fn = (
+                    (getattr(f_rep, "filename", None) or "").strip()
+                    if f_rep
+                    else ""
+                )
+                if not f_rep or not fn:
+                    flash(tr(lg, "err_plantilla_archivo_falta"), "warning")
+                else:
+                    nl = fn.lower()
+                    if not (nl.endswith(".xlsx") or nl.endswith(".csv")):
+                        flash(tr(lg, "err_only_xlsx_csv"), "warning")
+                    else:
+                        reemplazar_archivo_plantilla(
+                            pid, f_rep.read(), Path(fn).name
+                        )
+                        flash(tr(lg, "flash_plantilla_archivo_ok"), "success")
+            elif accion == "eliminar":
+                eliminar_plantilla(pid)
+                flash(tr(lg, "flash_plantilla_eliminada"), "success")
+            else:
+                flash(tr(lg, "err_plantilla_accion"), "warning")
+        except ValueError as exc:
+            code = str(exc)
+            if code == "nombre_duplicado":
+                flash(tr(lg, "flash_plantilla_nombre_duplicado"), "warning")
+            elif code == "nombre_vacio":
+                flash(tr(lg, "err_plantilla_nombre_vacio"), "warning")
+            elif code == "no_existe":
+                flash(tr(lg, "err_plantilla_no_existe"), "warning")
+            else:
+                flash(tr(lg, "err_plantilla_generico"), "warning")
+        return redirect(url_for("plantillas_imputaciones"))
+    try:
+        plantillas = listar_plantillas()
+    except OSError:
+        plantillas = []
+    return render_template(
+        "plantillas_imputaciones.html",
+        plantillas=plantillas,
     )
 
 

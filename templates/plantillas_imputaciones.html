@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="{{ current_lang }}">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{{ t('plantillas_imputaciones_title') }}</title>
+    <script>
+      (function () {
+        try {
+          if (localStorage.getItem("tema") === "oscuro") {
+            document.documentElement.classList.add("modo-oscuro");
+          }
+        } catch (e) {}
+      })();
+    </script>
+    <style>
+      :root {
+        --bg-body: #ffffff;
+        --bg-panel: #fafafa;
+        --text-primary: #1a1a1a;
+        --text-muted: #444;
+        --border: #bbb;
+        --color-link: #1565c0;
+        --btn-bg: #111;
+        --btn-text: #fff;
+        --btn-border: #333;
+      }
+      html.modo-oscuro {
+        color-scheme: dark;
+        --bg-body: #0f1014;
+        --bg-panel: #1a1c22;
+        --text-primary: #eceef3;
+        --text-muted: #aeb4c0;
+        --border: #3d424d;
+        --color-link: #8ab4ff;
+        --btn-bg: #3d7dd9;
+        --btn-text: #0c1118;
+        --btn-border: #5b93e8;
+      }
+      body {
+        font-family: Arial, sans-serif;
+        margin: clamp(0.75rem, 2vw, 1.5rem);
+        background: var(--bg-body);
+        color: var(--text-primary);
+      }
+      a {
+        color: var(--color-link);
+      }
+      .pagina {
+        max-width: 920px;
+        margin: 0 auto;
+      }
+      .barra-superior {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        gap: 0.5rem;
+        margin-bottom: 1rem;
+      }
+      .select-idioma {
+        font-size: 0.85rem;
+        padding: 0.38rem 0.55rem;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: var(--bg-panel);
+        color: var(--text-primary);
+        cursor: pointer;
+      }
+      .panel {
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 1.15rem 1.25rem;
+        background: var(--bg-panel);
+      }
+      .panel h1 {
+        margin: 0 0 0.5rem 0;
+        font-size: 1.4rem;
+      }
+      .intro {
+        margin: 0 0 1rem 0;
+        color: var(--text-muted);
+        font-size: 0.95rem;
+        line-height: 1.45;
+      }
+      .flash-lista {
+        margin-bottom: 1rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.4rem;
+      }
+      .flash-msg {
+        padding: 0.5rem 0.65rem;
+        border-radius: 8px;
+        font-size: 0.9rem;
+        border: 1px solid var(--border);
+      }
+      .flash-msg.success {
+        background: #e8f5e9;
+        border-color: #81c784;
+        color: #1b5e20;
+      }
+      html.modo-oscuro .flash-msg.success {
+        background: #1b3a1f;
+        border-color: #4caf50;
+        color: #c8e6c9;
+      }
+      .flash-msg.warning {
+        background: #fff8e1;
+        border-color: #ffcc80;
+        color: #5d4037;
+      }
+      html.modo-oscuro .flash-msg.warning {
+        background: #3d3000;
+        border-color: #ffb74d;
+        color: #ffe0b2;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.9rem;
+      }
+      th,
+      td {
+        border: 1px solid var(--border);
+        padding: 0.45rem 0.5rem;
+        text-align: left;
+        vertical-align: top;
+      }
+      th {
+        background: var(--bg-body);
+      }
+      .acciones {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+      }
+      .acciones form {
+        margin: 0;
+      }
+      input[type="text"] {
+        padding: 0.4rem 0.5rem;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: var(--bg-body);
+        color: var(--text-primary);
+        max-width: 100%;
+        box-sizing: border-box;
+      }
+      button,
+      .btn-sec {
+        margin-top: 0;
+        padding: 0.45rem 0.65rem;
+        border: 1px solid var(--btn-border);
+        background: var(--btn-bg);
+        color: var(--btn-text);
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 0.85rem;
+      }
+      button:hover {
+        filter: brightness(1.08);
+      }
+      .btn-peligro {
+        background: #b71c1c;
+        border-color: #7f0000;
+        color: #fff;
+      }
+      html.modo-oscuro .btn-peligro {
+        background: #e57373;
+        border-color: #c62828;
+        color: #1a0505;
+      }
+      .btn-sec {
+        display: inline-block;
+        text-decoration: none;
+        text-align: center;
+        background: var(--bg-body);
+        color: var(--text-primary);
+        border-color: var(--border);
+      }
+      .volver {
+        margin-top: 1.25rem;
+      }
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="pagina">
+      <div class="barra-superior">
+        <label for="select-idioma" class="sr-only">{{ t('lang_select_aria') }}</label>
+        <select
+          id="select-idioma"
+          class="select-idioma"
+          autocomplete="off"
+          onchange="location.href='/set-lang/'+encodeURIComponent(this.value)+'?next='+encodeURIComponent(window.location.pathname);"
+        >
+          {% for code in langs %}
+          <option value="{{ code }}" {% if code == current_lang %}selected{% endif %}>{{ lang_labels[code] }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="panel">
+        <h1>{{ t('plantillas_imputaciones_title') }}</h1>
+        <p class="intro">{{ t('plantillas_imputaciones_intro') }}</p>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        <div class="flash-lista" role="status">
+          {% for category, message in messages %}
+          <div class="flash-msg {{ category }}">{{ message }}</div>
+          {% endfor %}
+        </div>
+        {% endif %}
+        {% endwith %}
+
+        {% if plantillas %}
+        <table>
+          <thead>
+            <tr>
+              <th>{{ t('plantillas_tabla_nombre') }}</th>
+              <th>{{ t('plantillas_tabla_archivo_orig') }}</th>
+              <th>{{ t('plantillas_tabla_acciones') }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for pl in plantillas %}
+            <tr>
+              <td>
+                <form method="post" action="{{ url_for('plantillas_imputaciones') }}">
+                  <input type="hidden" name="accion" value="renombrar" />
+                  <input type="hidden" name="plantilla_id" value="{{ pl.id }}" />
+                  <input
+                    type="text"
+                    name="nuevo_nombre"
+                    value="{{ pl.nombre }}"
+                    maxlength="120"
+                    aria-label="{{ t('plantillas_renombrar_aria') }}"
+                  />
+                  <button type="submit">{{ t('plantillas_btn_renombrar') }}</button>
+                </form>
+              </td>
+              <td>{{ pl.nombre_original }}</td>
+              <td>
+                <div class="acciones">
+                  <form method="post" action="{{ url_for('plantillas_imputaciones') }}" enctype="multipart/form-data">
+                    <input type="hidden" name="accion" value="reemplazar" />
+                    <input type="hidden" name="plantilla_id" value="{{ pl.id }}" />
+                    <input type="file" name="nuevo_archivo" accept=".xlsx,.csv" required />
+                    <button type="submit">{{ t('plantillas_btn_reemplazar_archivo') }}</button>
+                  </form>
+                  <form method="post" action="{{ url_for('plantillas_imputaciones') }}" onsubmit="return confirm({{ t('plantillas_confirm_eliminar')|tojson }});">
+                    <input type="hidden" name="accion" value="eliminar" />
+                    <input type="hidden" name="plantilla_id" value="{{ pl.id }}" />
+                    <button type="submit" class="btn-peligro">{{ t('plantillas_btn_eliminar') }}</button>
+                  </form>
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p class="intro">{{ t('plantillas_lista_vacia') }}</p>
+        {% endif %}
+
+        <p class="volver"><a class="btn-sec" href="{{ url_for('index') }}">{{ t('plantillas_volver_inicio') }}</a></p>
+      </div>
+    </div>
+  </body>
+</html>

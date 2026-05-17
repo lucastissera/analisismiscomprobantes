@@ -10,3 +10,8 @@ __pycache__/
 .venv/
 venv/
 env/
+
+# PyInstaller / datos locales de plantillas
+dist/
+build/
+data_local_imputaciones/

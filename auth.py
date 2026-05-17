@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import sys
 from pathlib import Path
 from urllib.parse import quote
 
@@ -24,7 +25,21 @@ _LOG = logging.getLogger(__name__)
 def _auth_users_file() -> Path:
     """Ruta al JSON; se evalúa en cada lectura para respetar env y .env cargado antes del import."""
     override = (os.environ.get("AUTH_USERS_PATH") or "").strip()
-    return Path(override) if override else _AUTH_DIR / "auth_users.json"
+    if override:
+        return Path(override)
+    # Portable PyInstaller: el usuario puede copiar auth_users.json junto al .exe (prioridad).
+    if getattr(sys, "frozen", False):
+        exe_dir = Path(sys.executable).resolve().parent
+        portable = exe_dir / "auth_users.json"
+        if portable.is_file():
+            return portable
+        meip = getattr(sys, "_MEIPASS", None)
+        if meip:
+            for name in ("auth_users.json", "auth_users.example.json"):
+                bundled = Path(meip) / name
+                if bundled.is_file():
+                    return bundled
+    return _AUTH_DIR / "auth_users.json"
 
 
 def _normalizar_usuarios(raw: dict) -> dict[str, str]:

@@ -10,7 +10,6 @@ from __future__ import annotations
 import io
 import os
 
-from cuit_en_arca.automation_playwright import ejecutar_descarga_mis_comprobantes
 from cuit_en_arca.credenciales import leer_credenciales_xlsx
 from cuit_en_arca.errores import AutomatizacionNoDisponibleError, FechaRangoInvalidaError
 from cuit_en_arca.validacion import parsear_fecha_argentina, validar_rango_max_un_anio
@@ -59,6 +58,8 @@ def ejecutar_flujo_cuit_en_arca(
         "false",
         "no",
     )
+    from cuit_en_arca.automation_playwright import ejecutar_descarga_mis_comprobantes
+
     return ejecutar_descarga_mis_comprobantes(
         cred, desde, hasta, headless=headless
     )

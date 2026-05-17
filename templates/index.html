@@ -38,6 +38,12 @@
         --btn-bg: #111;
         --btn-text: #fff;
         --btn-border: #333;
+        --zona-imput-bg: #f3edff;
+        --zona-imput-border: #7e57c2;
+        --zona-rec-bg: #e8f5e9;
+        --zona-rec-border: #2e7d32;
+        --zona-emit-bg: #e3f2fd;
+        --zona-emit-border: #1565c0;
       }
       html.modo-oscuro {
         color-scheme: dark;
@@ -57,6 +63,12 @@
         --btn-bg: #3d7dd9;
         --btn-text: #0c1118;
         --btn-border: #5b93e8;
+        --zona-imput-bg: #2a2438;
+        --zona-imput-border: #b39ddb;
+        --zona-rec-bg: #1c2a22;
+        --zona-rec-border: #66bb6a;
+        --zona-emit-bg: #1a2838;
+        --zona-emit-border: #64b5f6;
       }
       html {
         overflow-x: hidden;
@@ -96,6 +108,57 @@
         color: var(--color-error);
         margin-bottom: 0.75rem;
       }
+      .flash-lista {
+        margin-bottom: 0.75rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.35rem;
+      }
+      .flash-msg {
+        padding: 0.5rem 0.65rem;
+        border-radius: 8px;
+        font-size: 0.9rem;
+        border: 1px solid var(--border);
+      }
+      .flash-msg.success {
+        background: #e8f5e9;
+        border-color: #81c784;
+        color: #1b5e20;
+      }
+      html.modo-oscuro .flash-msg.success {
+        background: #1b3a1f;
+        border-color: #4caf50;
+        color: #c8e6c9;
+      }
+      .flash-msg.warning {
+        background: #fff8e1;
+        border-color: #ffcc80;
+        color: #5d4037;
+      }
+      html.modo-oscuro .flash-msg.warning {
+        background: #3d3000;
+        border-color: #ffb74d;
+        color: #ffe0b2;
+      }
+      .plantillas-imputacion-local {
+        margin-top: 0.85rem;
+        padding-top: 0.85rem;
+        border-top: 1px solid var(--border);
+      }
+      .select-plantilla-imputacion {
+        margin-top: 0.35rem;
+        max-width: 100%;
+        width: min(32rem, 100%);
+        padding: 0.45rem 0.5rem;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: var(--bg-body);
+        color: var(--text-primary);
+        font-size: 0.9rem;
+      }
+      .campo-guardar-plantilla-imputacion {
+        margin-top: 0.85rem;
+      }
       .paneles-superiores {
         display: flex;
         flex-wrap: wrap;
@@ -117,6 +180,14 @@
       }
       .recuadro h1 {
         font-size: 1.5rem;
+      }
+      #titulo-procesador {
+        text-align: center;
+        font-size: clamp(1.65rem, 2.6vw, 2.1rem);
+        font-weight: 700;
+        letter-spacing: 0.02em;
+        margin-bottom: 0.75rem;
+        width: 100%;
       }
       button {
         margin-top: 0.75rem;
@@ -569,9 +640,10 @@
       .importacion-ref-imputacion {
         margin-bottom: 1rem;
         border: 1px solid var(--border-soft);
+        border-left: 4px solid var(--zona-imput-border);
         border-radius: 8px;
         padding: 0.85rem 1rem;
-        background: var(--bg-body);
+        background: var(--zona-imput-bg);
       }
       .importacion-ref-imputacion h3 {
         margin: 0 0 0.35rem 0;
@@ -593,6 +665,14 @@
         padding: 0.85rem 1rem;
         background: var(--bg-body);
         min-width: 0;
+      }
+      #bloque-recibidos.importacion-bloque {
+        background: var(--zona-rec-bg);
+        border-left: 4px solid var(--zona-rec-border);
+      }
+      #bloque-emitidos.importacion-bloque {
+        background: var(--zona-emit-bg);
+        border-left: 4px solid var(--zona-emit-border);
       }
       .importacion-bloque h3 {
         margin: 0 0 0.35rem 0;
@@ -698,6 +778,16 @@
       <div class="error">{{ error }}</div>
       {% endif %}
 
+      {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+      <div class="flash-lista" role="status">
+        {% for category, message in messages %}
+        <div class="flash-msg {{ category }}">{{ message }}</div>
+        {% endfor %}
+      </div>
+      {% endif %}
+      {% endwith %}
+
       <div class="paneles-superiores">
         {% if mostrar_cuit_arca_ui %}
         <section class="recuadro recuadro-izq" aria-labelledby="titulo-arca">
@@ -782,6 +872,54 @@
                   ></p>
                 </div>
               </div>
+              {% if plantillas_imputacion_ui %}
+              <div class="plantillas-imputacion-local">
+                <p class="subtitulo-detalle" style="margin-top: 0">
+                  {{ t('processor_imputaciones_plantillas_note')|safe }}
+                </p>
+                <p class="subtitulo-detalle" style="margin-top: 0.35rem">
+                  <a href="{{ url_for('plantillas_imputaciones') }}">{{ t('plantillas_link_gestion') }}</a>
+                </p>
+                <label for="select-plantilla-imputacion"><strong>{{ t('plantilla_select_label') }}</strong></label><br />
+                <select
+                  name="plantilla_imputacion_id"
+                  id="select-plantilla-imputacion"
+                  class="select-plantilla-imputacion"
+                  autocomplete="off"
+                >
+                  <option value="">{{ t('plantilla_select_none') }}</option>
+                  {% for pl in plantillas_imputacion_lista %}
+                  <option value="{{ pl.id }}">{{ pl.nombre }} — {{ pl.nombre_original }}</option>
+                  {% endfor %}
+                </select>
+                <div class="campo-guardar-plantilla-imputacion">
+                  <label for="nombre-nueva-plantilla-imputacion"
+                    ><strong>{{ t('plantilla_nombre_guardar_label') }}</strong></label
+                  ><br />
+                  <input
+                    type="text"
+                    name="nombre_nueva_plantilla_imputacion"
+                    id="nombre-nueva-plantilla-imputacion"
+                    maxlength="120"
+                    placeholder="{{ t('plantilla_nombre_guardar_placeholder') }}"
+                    autocomplete="off"
+                    style="
+                      max-width: 22rem;
+                      width: 100%;
+                      margin-top: 0.25rem;
+                      padding: 0.45rem;
+                      border: 1px solid var(--border);
+                      border-radius: 6px;
+                      background: var(--bg-body);
+                      color: var(--text-primary);
+                    "
+                  />
+                  <p class="nota-tecnica" style="margin: 0.35rem 0 0 0; font-size: 0.82rem">
+                    {{ t('plantilla_nombre_guardar_ayuda') }}
+                  </p>
+                </div>
+              </div>
+              {% endif %}
             </div>
             <div class="importacion-dual">
               <div class="importacion-bloque" id="bloque-recibidos">
@@ -1605,6 +1743,22 @@
         var btnI = document.getElementById("btn-elegir-imputaciones");
         if (inputI && zonaI && nombreI) {
           wireZona(zonaI, inputI, nombreI, btnI);
+        }
+        var selImp = document.getElementById("select-plantilla-imputacion");
+        if (inputI && selImp && nombreI) {
+          selImp.addEventListener("change", function () {
+            if (selImp.value) {
+              try {
+                inputI.value = "";
+              } catch (e) {}
+              vaciarNombre(nombreI);
+            }
+          });
+          inputI.addEventListener("change", function () {
+            if (inputI.files && inputI.files.length) {
+              selImp.value = "";
+            }
+          });
         }
       })();
     </script>
