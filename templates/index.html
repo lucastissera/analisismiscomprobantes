@@ -547,6 +547,14 @@
       .pie-legal p:last-child {
         margin-bottom: 0;
       }
+      .pie-desktop-quit {
+        margin: 0 0 0.75rem 0;
+        margin-left: auto;
+        max-width: 38rem;
+      }
+      .pie-desktop-quit a {
+        font-weight: 600;
+      }
       .barra-tema {
         display: flex;
         justify-content: flex-end;
@@ -1588,6 +1596,11 @@
       {% endif %}
 
       <footer class="pie-legal" role="contentinfo">
+        {% if ejecutable_escritorio_frozen %}
+        <p class="pie-desktop-quit">
+          <a href="{{ url_for('desktop_quit') }}">{{ t('desktop_quit_link') }}</a>
+        </p>
+        {% endif %}
         <p>{{ t('footer_copyright') }}</p>
         <p>{{ t('footer_disclaimer') }}</p>
       </footer>

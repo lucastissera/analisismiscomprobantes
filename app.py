@@ -1,6 +1,7 @@
 import io
 import os
 import sys
+import threading
 import time
 from datetime import timedelta
 from pathlib import Path
@@ -29,6 +30,7 @@ from flask import (
     send_file,
     session,
     url_for,
+    Response,
 )
 
 if getattr(sys, "frozen", False):
@@ -115,7 +117,7 @@ def _session_idle_and_login():
             session["last_activity"] = now
             session.modified = True
 
-    if request.endpoint in ("login", "set_lang", None):
+    if request.endpoint in ("login", "set_lang", "desktop_quit", None):
         return None
     if session.get("user"):
         return None
@@ -157,7 +159,10 @@ def _mostrar_ui_cuit_arca() -> bool:
 
 @app.context_processor
 def _inject_ui_flags():
-    return {"mostrar_cuit_arca_ui": _mostrar_ui_cuit_arca()}
+    return {
+        "mostrar_cuit_arca_ui": _mostrar_ui_cuit_arca(),
+        "ejecutable_escritorio_frozen": getattr(sys, "frozen", False),
+    }
 
 
 @app.context_processor
@@ -281,6 +286,28 @@ def logout():
     session.pop("user", None)
     session.pop("last_activity", None)
     return redirect(url_for("login"))
+
+
+@app.route("/desktop-quit", methods=["GET", "POST"])
+def desktop_quit():
+    """Solo .exe local: cierra el proceso (sin consola no hay otra forma obvia de salir)."""
+    if not getattr(sys, "frozen", False):
+        abort(404)
+    ra = (request.remote_addr or "").replace("::ffff:", "")
+    if ra not in ("127.0.0.1", "::1"):
+        abort(403)
+    lg = normalize_lang(session.get("lang"))
+
+    def _salir() -> None:
+        time.sleep(0.2)
+        os._exit(0)
+
+    threading.Thread(target=_salir, daemon=True).start()
+    return Response(
+        tr(lg, "desktop_quit_cerrando") + "\n",
+        mimetype="text/plain; charset=utf-8",
+    )
+
 
 MIME_XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
@@ -439,6 +466,7 @@ def procesar():
             resumen_imputacion_rec=res_imp_r,
             resumen_imputacion_emit=res_imp_e,
             con_columnas_imputacion_en_contrapartes=con_cols_imp,
+            mapa_imputaciones=mapa_imputaciones,
         )
         contenido = salida.getvalue()
         nombre_salida = f"{Path(nombre_r).stem}_{Path(nombre_e).stem}_ajustado.xlsx"
@@ -539,6 +567,7 @@ def procesar():
         tabla_contrapartes=tabla_contrapartes,
         resumen_imputacion=res_imp,
         con_columnas_imputacion_en_contrapartes=con_cols_imp,
+        mapa_imputaciones=mapa_imputaciones,
     )
     contenido = salida.getvalue()
 

@@ -1,9 +1,13 @@
 """
 Plantillas de imputación contable guardadas en disco (modo escritorio / .exe).
 
-Datos bajo %LOCALAPPDATA%\\DepuracionExcelComprobantes\\plantillas_imputacion\\
-o, en desarrollo, carpeta ``data_local_imputaciones`` en el proyecto si se define
-``ENABLE_LOCAL_PLANTILLAS_IMPUTACION=1``.
+Prioridad de carpeta base (``plantillas_imputacion`` queda dentro):
+
+1. Variable de entorno ``IMPUTACIONES_DATA_DIR`` (ruta local o UNC compartida en red).
+2. Si el .exe está congelado: archivo ``imputaciones_ruta_red.txt`` junto al ejecutable,
+   primera línea no vacía ni comentada con ``#`` = ruta base (misma semántica que el punto 1).
+3. Por defecto en .exe: ``%LOCALAPPDATA%\\DepuracionExcelComprobantes``.
+4. En desarrollo: carpeta ``data_local_imputaciones`` en el proyecto.
 """
 
 from __future__ import annotations
@@ -26,16 +30,35 @@ def plantillas_imputacion_disponibles() -> bool:
     return v in ("1", "true", "yes", "on")
 
 
+def _ruta_base_desde_archivo_junto_exe() -> Path | None:
+    """``imputaciones_ruta_red.txt`` al lado del .exe: una línea con la carpeta base compartida."""
+    if not getattr(sys, "frozen", False):
+        return None
+    p = Path(sys.executable).resolve().parent / "imputaciones_ruta_red.txt"
+    if not p.is_file():
+        return None
+    try:
+        for raw in p.read_text(encoding="utf-8").splitlines():
+            s = raw.strip()
+            if s and not s.startswith("#"):
+                return Path(s)
+    except OSError:
+        return None
+    return None
+
+
 def _dir_base_usuario() -> Path:
+    override = (os.environ.get("IMPUTACIONES_DATA_DIR") or "").strip()
+    if override:
+        return Path(override)
     if getattr(sys, "frozen", False):
+        red = _ruta_base_desde_archivo_junto_exe()
+        if red is not None:
+            return red
         local = os.environ.get("LOCALAPPDATA")
         if local:
             return Path(local) / "DepuracionExcelComprobantes"
         return Path.home() / "AppData" / "Local" / "DepuracionExcelComprobantes"
-    # Desarrollo: junto al proyecto o override
-    override = (os.environ.get("IMPUTACIONES_DATA_DIR") or "").strip()
-    if override:
-        return Path(override)
     return Path(__file__).resolve().parent / "data_local_imputaciones"
 
 

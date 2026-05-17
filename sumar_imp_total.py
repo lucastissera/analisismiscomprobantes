@@ -622,6 +622,12 @@ def acumulado_por_contraparte(
 # DataFrame de imputaciones: columnas (cuit, razón|None, código, nombre) ya resueltas
 ATTR_IMPUTACION_COLUMNAS = "imputacion_resuelta_cols"
 
+# CUIT con documento válido pero ausente en la planilla de imputación (mapa cargado)
+IMPUTACION_ASIGNAR_CODIGO = "ASIGNAR IMPUTACION"
+IMPUTACION_ASIGNAR_NOMBRE = "ASIGNAR IMPUTACION"
+_COLUMNA_COD_IMPUTACION_COMPROBANTES = "Cód. imputación"
+_COLUMNA_NOM_IMPUTACION_COMPROBANTES = "Imputación contable"
+
 
 def _es_celda_candidata_documento_cuit(val: object) -> bool:
     """True si el valor puede ser un CUIT/DNI normalizado (solo dígitos, longitud habitual)."""
@@ -1165,10 +1171,52 @@ def enriquecer_contrapartes_con_imputacion(
     for r in tabla_contrapartes:
         row = dict(r)
         k = _normalizar_clave_cuit_doc(row.get("cuit", ""))
-        cod, nom = mapa_cuit_imputacion.get(k, ("", ""))
+        if not k:
+            cod, nom = ("", "")
+        elif k not in mapa_cuit_imputacion:
+            cod = IMPUTACION_ASIGNAR_CODIGO
+            nom = IMPUTACION_ASIGNAR_NOMBRE
+        else:
+            cod, nom = mapa_cuit_imputacion[k]
         row["codigo_imputacion"] = cod
         row["nombre_imputacion"] = nom
         out.append(row)
+    return out
+
+
+def agregar_columnas_imputacion_a_dataframe_comprobantes(
+    df: pd.DataFrame,
+    mapa_cuit_imputacion: dict[str, tuple[str, str]],
+    *,
+    emitidos: bool,
+) -> pd.DataFrame:
+    """
+    Añade por fila ``Cód. imputación`` e ``Imputación contable`` según el CUIT de contraparte
+    (misma columna que ``acumulado_por_contraparte``). CUIT presente y no listado en el mapa
+    → imputación ficticia ``ASIGNAR IMPUTACION``.
+    """
+    out = df.copy()
+    if not mapa_cuit_imputacion:
+        return out
+    col_doc = "Nro. Doc. Receptor" if emitidos else "Nro. Doc. Emisor"
+    if col_doc not in out.columns:
+        return out
+    codigos: list[str] = []
+    nombres: list[str] = []
+    for val in out[col_doc]:
+        k = _normalizar_clave_cuit_doc(val)
+        if not k:
+            codigos.append("")
+            nombres.append("")
+        elif k not in mapa_cuit_imputacion:
+            codigos.append(IMPUTACION_ASIGNAR_CODIGO)
+            nombres.append(IMPUTACION_ASIGNAR_NOMBRE)
+        else:
+            c, n = mapa_cuit_imputacion[k]
+            codigos.append(c)
+            nombres.append(n)
+    out[_COLUMNA_COD_IMPUTACION_COMPROBANTES] = codigos
+    out[_COLUMNA_NOM_IMPUTACION_COMPROBANTES] = nombres
     return out
 
 
@@ -1902,9 +1950,15 @@ def escribir_excel_informe_completo(
     tabla_contrapartes: list[dict],
     resumen_imputacion: list[dict[str, Any]] | None = None,
     con_columnas_imputacion_en_contrapartes: bool = False,
+    mapa_imputaciones: dict[str, tuple[str, str]] | None = None,
 ) -> None:
     temp = io.BytesIO()
-    df_ajustado.to_excel(temp, index=False, engine="openpyxl", sheet_name=_SHEET_COMPR)
+    df_xl = df_ajustado
+    if mapa_imputaciones is not None:
+        df_xl = agregar_columnas_imputacion_a_dataframe_comprobantes(
+            df_ajustado, mapa_imputaciones, emitidos=emitidos
+        )
+    df_xl.to_excel(temp, index=False, engine="openpyxl", sheet_name=_SHEET_COMPR)
     temp.seek(0)
     wb = load_workbook(temp)
     ws0 = wb.active
@@ -1972,12 +2026,27 @@ def escribir_excel_informe_dual(
     resumen_imputacion_rec: list[dict[str, Any]] | None = None,
     resumen_imputacion_emit: list[dict[str, Any]] | None = None,
     con_columnas_imputacion_en_contrapartes: bool = False,
+    mapa_imputaciones: dict[str, tuple[str, str]] | None = None,
 ) -> None:
     """Un solo libro con comprobantes, resumen, distribución y contrapartes para recibidos y emitidos."""
     wb = Workbook()
     ws0 = wb.active
     ws0.title = "Comprobantes recibidos"
-    for row in dataframe_to_rows(df_recibidos, index=False, header=True):
+    df_r_xl = (
+        agregar_columnas_imputacion_a_dataframe_comprobantes(
+            df_recibidos, mapa_imputaciones, emitidos=False
+        )
+        if mapa_imputaciones is not None
+        else df_recibidos
+    )
+    df_e_xl = (
+        agregar_columnas_imputacion_a_dataframe_comprobantes(
+            df_emitidos, mapa_imputaciones, emitidos=True
+        )
+        if mapa_imputaciones is not None
+        else df_emitidos
+    )
+    for row in dataframe_to_rows(df_r_xl, index=False, header=True):
         ws0.append(row)
     encab_r = [c.value for c in ws0[1]]
     _aplicar_hoja_comprobantes_excel(
@@ -2018,7 +2087,7 @@ def escribir_excel_informe_dual(
         )
 
     _hoja_comprobantes_desde_dataframe(
-        wb, df_emitidos, "Comprobantes emitidos", True
+        wb, df_e_xl, "Comprobantes emitidos", True
     )
 
     wse = wb.create_sheet("Resumen emitidos")

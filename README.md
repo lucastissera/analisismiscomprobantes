@@ -51,9 +51,9 @@ Convéniente: comprimir en **ZIP** la carpeta `MisComprobantesAnalisis` completa
 ### Cómo usarla en otra PC
 
 1. Descomprimir la carpeta `MisComprobantesAnalisis`.
-2. Ejecutar `MisComprobantesAnalisis.exe`.
-3. Se abre una **ventana de la aplicación** (Edge o Chrome en modo app, si están instalados) apuntando a `http://127.0.0.1:8765` (puerto por defecto). Además puede verse una **consola** (ventana negra): dejala abierta mientras usás la app; al cerrarla se detiene el programa.
-4. Cerrá la ventana de la interfaz cuando termines (la consola podés cerrarla después para salir del todo).
+2. Ejecutar `MisComprobantesAnalisis.exe` (no se abre la ventana negra de consola: solo Edge/Chrome en modo app o el navegador predeterminado).
+3. Se abre la **ventana de la aplicación** (Edge o Chrome en modo app, si están instalados) en `http://127.0.0.1:8765` (puerto por defecto).
+4. Para **salir por completo**, usá el enlace del pie de página **«Cerrar aplicación de escritorio»** (cierra el proceso del servidor local).
 
 **Puerto:** si 8765 está ocupado, antes de abrir el `.exe` podés definir la variable de entorno `PORT` (por ejemplo `PORT=8777`).
 
@@ -87,13 +87,13 @@ Ahí están el índice `plantillas.json` y los archivos `.xlsx` / `.csv` asociad
 - **Doble clic o CMD:** `build_windows.bat` — instala dependencias, ejecuta PyInstaller y, si existe `auth_users.json` en la **raíz del repo**, lo copia automáticamente a `dist\MisComprobantesAnalisis\auth_users.json` (junto al `.exe`).
 - **O a mano:** `python tools/portable_build.py` (desde la raíz del proyecto).
 
-**Vigilancia automática** (cada vez que guardás `auth_users.json` en la raíz, tras ~2,5 s sin nuevos guardados se recompila el portable y se vuelve a copiar el archivo de claves):
+**Vigilancia automática** (mientras `watch_portable.bat` o `python tools/portable_watch.py` esté en marcha, tras unos **3,5 s** sin nuevos guardados se **recompila** el portable y se copian las claves si hay `auth_users.json` en la raíz):
 
 1. `python -m pip install watchdog` (una vez).
 2. Ejecutá **`watch_portable.bat`** o `python tools/portable_watch.py`.
-3. Editá y guardá `auth_users.json`; no hace falta copiar nada a mano ni lanzar PyInstaller aparte.
+3. Guardá cambios en **código, plantillas (`templates/`), `i18n.py`, `app.py`, etc.** — el vigilante ignora `dist/`, `build/` y cachés para no reentrar en bucle. **Cerrá el `.exe` del portable** si Windows bloquea archivos en uso durante el build.
 
-Opciones del vigilante: `python tools/portable_watch.py --no-initial` (no compila al arrancar, solo al detectar cambios).
+Opciones: `python tools/portable_watch.py --no-initial` (no compila al arrancar), `--solo-claves` (solo vigila `auth_users.json`, sin el resto del repo).
 
 La salida del build queda en `dist\MisComprobantesAnalisis\`. El empaquetado se define en `MisComprobantesDesktop.spec`.
 
@@ -105,7 +105,7 @@ La salida del build queda en `dist\MisComprobantesAnalisis\`. El empaquetado se 
 
 El portable **no es un fork**: usa el mismo `app.py`, `templates/`, `sumar_imp_total.py`, `i18n.py`, etc. que el despliegue web.
 
-**Regla práctica:** cada vez que subís cambios pensados para la **web** (HTML, rutas Flask, lógica de procesamiento, textos), si querés que eso exista también en **Windows**, tenés que **volver a ejecutar** el build de PyInstaller en una máquina con el código actualizado y redistribuir la carpeta `dist\MisComprobantesAnalisis\` (o el ZIP).
+**Regla práctica:** cada cambio en la web que deba verse en Windows requiere **recompilar** el portable (`build_windows.bat`, `python tools/portable_build.py`, o dejar **`watch_portable.bat`** abierto mientras editás para que el `dist\` se actualice solo).
 
 **Si agregás recursos nuevos** (por ejemplo otra carpeta de estáticos, nuevos templates, JSON embebidos), revisá `MisComprobantesDesktop.spec` y la lista `datas=` para incluirlos; si no, el portable puede fallar o quedar sin esos archivos.
 
@@ -133,7 +133,7 @@ Marcá cada ítem al publicar una versión nueva. El orden sugiere: código list
 
 - [ ] ¿Nuevos archivos en `templates/`, `static/`, JSON u otros datos? → actualizá `datas` en `MisComprobantesDesktop.spec` si hace falta.
 - [ ] Ejecutá `build_windows.bat` o `python tools/portable_build.py` (incluye PyInstaller + copia de `auth_users.json` si existe en la raíz).
-- [ ] (Opcional en desarrollo) Con `watch_portable.bat` activo, cada guardado de `auth_users.json` recompila y sincroniza solo.
+- [ ] (Opcional) Con `watch_portable.bat` activo, los guardados en el repo actualizan `dist\…` solos; si no, ejecutá `build_windows.bat` o `python tools/portable_build.py` antes de empaquetar el ZIP.
 - [ ] Smoke test en otra carpeta o otra PC: abrir `MisComprobantesAnalisis.exe`, login, procesar, plantillas si aplica.
 - [ ] Si distribuís credenciales propias: asegurate de que el build haya copiado `auth_users.json` a `dist\…` (automático con `build_windows.bat` / `portable_build.py`) o documentá el uso de `AUTH_USERS_PATH`.
 - [ ] Generá el **ZIP** de toda la carpeta `dist\MisComprobantesAnalisis\` (no solo el `.exe`).
