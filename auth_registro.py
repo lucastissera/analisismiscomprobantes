@@ -11,7 +11,7 @@ import smtplib
 import sys
 import tempfile
 import threading
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from email.message import EmailMessage
 from pathlib import Path
 from typing import Any
@@ -70,6 +70,20 @@ def _min_password_len() -> int:
         return max(6, min(int(raw), 128))
     except ValueError:
         return 8
+
+
+def _dias_suscripcion() -> int:
+    raw = (os.environ.get("AUTH_SUBSCRIPTION_DAYS") or "30").strip()
+    try:
+        return max(1, min(int(raw), 3660))
+    except ValueError:
+        return 30
+
+
+def _parse_fecha_local(val: Any) -> date | None:
+    from auth import _parse_fecha
+
+    return _parse_fecha(val)
 
 
 def normalizar_cuit(val: str) -> str | None:
@@ -316,6 +330,9 @@ def aprobar_cuenta(cuit: str) -> bool:
     u = normalizar_cuit(cuit)
     if not u:
         return False
+    dias = _dias_suscripcion()
+    hoy = datetime.now(timezone.utc).date()
+    valido_hasta = hoy + timedelta(days=dias)
     with _lock:
         path = _path_usuarios_overlay()
         overlay = _leer_json(path, {"version": 1, "users": {}})
@@ -324,10 +341,86 @@ def aprobar_cuenta(cuit: str) -> bool:
             return False
         users[u]["activo"] = True
         users[u]["pendiente_aprobacion"] = False
+        users[u]["valido_desde"] = hoy.isoformat()
+        users[u]["valido_hasta"] = valido_hasta.isoformat()
         users[u]["aprobado_en"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
         overlay["updated_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
         _escribir_json(path, overlay)
     return True
+
+
+def listar_usuarios_suscripcion() -> list[dict[str, Any]]:
+    hoy = date.today()
+    out: list[dict[str, Any]] = []
+    for cuit, meta in cargar_usuarios_overlay().items():
+        if not isinstance(meta, dict):
+            continue
+        if meta.get("pendiente_aprobacion") or meta.get("activo") is False:
+            continue
+        vh = _parse_fecha_local(meta.get("valido_hasta"))
+        dias = (vh - hoy).days if vh else None
+        out.append(
+            {
+                "cuit": cuit,
+                "cuit_fmt": formatear_cuit(cuit),
+                "email": meta.get("email") or "",
+                "nombre": meta.get("nombre") or "",
+                "valido_hasta": vh.isoformat() if vh else "",
+                "valido_hasta_fmt": vh.strftime("%d/%m/%Y") if vh else "—",
+                "dias_restantes": dias,
+                "vencida": dias is not None and dias < 0,
+            }
+        )
+    out.sort(key=lambda x: (x.get("dias_restantes") is None, x.get("dias_restantes") or 0))
+    return out
+
+
+def renovar_suscripcion(cuit: str, dias: int | None = None) -> bool:
+    u = normalizar_cuit(cuit)
+    if not u:
+        return False
+    duracion = dias if dias is not None else _dias_suscripcion()
+    if duracion < 1:
+        return False
+    hoy = date.today()
+    with _lock:
+        path = _path_usuarios_overlay()
+        overlay = _leer_json(path, {"version": 1, "users": {}})
+        users = overlay.get("users")
+        if not isinstance(users, dict) or u not in users:
+            return False
+        meta = users[u]
+        if meta.get("pendiente_aprobacion") or meta.get("activo") is False:
+            return False
+        vh_actual = _parse_fecha_local(meta.get("valido_hasta"))
+        base = max(hoy, vh_actual) if vh_actual else hoy
+        nueva_hasta = base + timedelta(days=duracion)
+        if not meta.get("valido_desde") or (vh_actual and hoy > vh_actual):
+            meta["valido_desde"] = hoy.isoformat()
+        meta["valido_hasta"] = nueva_hasta.isoformat()
+        meta["renovado_en"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        overlay["updated_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        _escribir_json(path, overlay)
+    return True
+
+
+def info_suscripcion_usuario(username: str) -> dict[str, Any] | None:
+    from auth import _load_cuentas, es_administrador
+
+    u_raw = (username or "").strip()
+    if not u_raw or es_administrador(u_raw):
+        return None
+    u = normalizar_cuit(u_raw) or u_raw
+    cuenta = _load_cuentas().get(u) or _load_cuentas().get(u_raw)
+    if not cuenta or not cuenta.valido_hasta:
+        return None
+    hoy = date.today()
+    dias = (cuenta.valido_hasta - hoy).days
+    return {
+        "valido_hasta": cuenta.valido_hasta,
+        "valido_hasta_fmt": cuenta.valido_hasta.strftime("%d/%m/%Y"),
+        "dias_restantes": dias,
+    }
 
 
 def rechazar_cuenta(cuit: str) -> bool:

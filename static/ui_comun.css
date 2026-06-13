@@ -66,6 +66,7 @@ html.modo-oscuro .btn-tema .icono-sol {
 }
 .barra-logout {
   font-size: 0.9rem;
+  text-align: right;
 }
 .barra-logout a {
   color: var(--color-link);
@@ -73,6 +74,17 @@ html.modo-oscuro .btn-tema .icono-sol {
 }
 .barra-logout a:hover {
   text-decoration: underline;
+}
+.barra-suscripcion {
+  margin-top: 0.35rem;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  color: var(--text-muted-2, var(--text-muted));
+  max-width: 14rem;
+}
+.barra-suscripcion-vencida {
+  color: var(--color-error, #b00020);
+  font-weight: 600;
 }
 .pie-legal {
   margin-top: 3rem;

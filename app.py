@@ -369,6 +369,34 @@ def _inject_i18n():
     }
 
 
+@app.context_processor
+def _inject_suscripcion():
+    user = session.get("user")
+    if not user or session.get("es_admin"):
+        return {
+            "suscripcion_dias_restantes": None,
+            "suscripcion_vencimiento_fmt": None,
+        }
+    try:
+        from auth_registro import info_suscripcion_usuario
+
+        info = info_suscripcion_usuario(user)
+        if not info:
+            return {
+                "suscripcion_dias_restantes": None,
+                "suscripcion_vencimiento_fmt": None,
+            }
+        return {
+            "suscripcion_dias_restantes": info["dias_restantes"],
+            "suscripcion_vencimiento_fmt": info["valido_hasta_fmt"],
+        }
+    except Exception:
+        return {
+            "suscripcion_dias_restantes": None,
+            "suscripcion_vencimiento_fmt": None,
+        }
+
+
 def _mapa_imputaciones_desde_peticion(
     lg: str,
 ) -> tuple[dict[str, tuple[str, str]] | None, str | None, bytes | None, str | None]:
@@ -549,9 +577,12 @@ def admin_altas_usuarios():
         formatear_cuit,
         listar_altas_recientes,
         listar_pendientes_aprobacion,
+        listar_usuarios_suscripcion,
         normalizar_cuit,
         rechazar_cuenta,
+        renovar_suscripcion,
         whatsapp_alta_admin_url,
+        _dias_suscripcion,
     )
 
     lg = normalize_lang(session.get("lang"))
@@ -562,12 +593,33 @@ def admin_altas_usuarios():
         cuit = (request.form.get("cuit") or "").strip()
         if accion == "aprobar":
             if aprobar_cuenta(cuit):
-                flash(tr(lg, "admin_altas_ok_aprobada", cuit=formatear_cuit(cuit)), "success")
+                flash(
+                    tr(
+                        lg,
+                        "admin_altas_ok_aprobada",
+                        cuit=formatear_cuit(cuit),
+                        dias=_dias_suscripcion(),
+                    ),
+                    "success",
+                )
             else:
                 flash(tr(lg, "admin_altas_err_no_encontrada"), "warning")
         elif accion == "rechazar":
             if rechazar_cuenta(cuit):
                 flash(tr(lg, "admin_altas_ok_rechazada"), "success")
+            else:
+                flash(tr(lg, "admin_altas_err_no_encontrada"), "warning")
+        elif accion == "renovar":
+            if renovar_suscripcion(cuit):
+                flash(
+                    tr(
+                        lg,
+                        "admin_gestion_ok_renovada",
+                        cuit=formatear_cuit(normalizar_cuit(cuit) or cuit),
+                        dias=_dias_suscripcion(),
+                    ),
+                    "success",
+                )
             else:
                 flash(tr(lg, "admin_altas_err_no_encontrada"), "warning")
         elif accion == "generar_enlace":
@@ -603,8 +655,10 @@ def admin_altas_usuarios():
     return render_template(
         "admin_altas_usuarios.html",
         pendientes=pendientes,
+        suscriptores=listar_usuarios_suscripcion(),
         altas=altas,
         enlace_generado=enlace_generado,
+        dias_suscripcion=_dias_suscripcion(),
     )
 
 
@@ -618,8 +672,10 @@ def login():
         pwd = request.form.get("password") or ""
         motivo = verificar_acceso(user, pwd)
         if motivo is None:
-            session["user"] = user
-            session["es_admin"] = es_administrador(user)
+            from auth import _resolver_clave_usuario
+
+            session["user"] = _resolver_clave_usuario(user)
+            session["es_admin"] = es_administrador(session["user"])
             session["last_activity"] = time.time()
             session.permanent = True
             session.modified = True

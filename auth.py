@@ -548,11 +548,26 @@ def load_users() -> dict[str, str]:
     }
 
 
+def _resolver_clave_usuario(username: str) -> str:
+    u = (username or "").strip()
+    if not u:
+        return u
+    try:
+        from auth_registro import normalizar_cuit
+
+        nu = normalizar_cuit(u)
+        if nu:
+            return nu
+    except Exception:
+        pass
+    return u
+
+
 def verificar_acceso(username: str, password: str) -> str | None:
     """Devuelve None si válido; si no: invalid, expired, not_yet, pending_approval."""
     from auth_registro import verificar_acceso_overlay, verificar_password
 
-    u = (username or "").strip()
+    u = _resolver_clave_usuario(username)
     pwd = (password or "").strip()
     if not u:
         return "invalid"

@@ -5,25 +5,50 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>{{ t('admin_altas_title') }}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='ui_comun.css') }}" />
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='logo.png') }}" />
+    <script>
+      try {
+        if (localStorage.getItem("tema") === "oscuro") document.documentElement.classList.add("modo-oscuro");
+      } catch (e) {}
+    </script>
     <style>
-      body { font-family: Arial, sans-serif; margin: 1rem; }
+      :root {
+        --bg-body: #fff; --bg-panel: #fafafa; --text-primary: #1a1a1a;
+        --text-muted: #444; --border: #bbb; --color-link: #1565c0;
+        --color-ok: #2e7d32; --color-warn: #e65100; --color-error: #c62828;
+        --btn-bg: #111; --btn-text: #fff; --btn-border: #333;
+        --enlace-bg: #f5f5f5;
+      }
+      html.modo-oscuro {
+        color-scheme: dark;
+        --bg-body: #0f1014; --bg-panel: #1a1c22; --text-primary: #eceef3;
+        --text-muted: #aeb4c0; --border: #3d424d; --color-link: #8ab4ff;
+        --color-ok: #66bb6a; --color-warn: #ffb74d; --color-error: #ff8a95;
+        --btn-bg: #3d7dd9; --btn-text: #0c1118; --btn-border: #5b93e8;
+        --enlace-bg: #12141a;
+      }
+      body { font-family: Arial, sans-serif; margin: 1rem; background: var(--bg-body); color: var(--text-primary); }
+      a { color: var(--color-link); }
       .pagina { max-width: 820px; margin: 0 auto; }
       table { width: 100%; border-collapse: collapse; font-size: 0.92rem; margin-bottom: 1.5rem; }
-      th, td { text-align: left; padding: 0.45rem; border-bottom: 1px solid #ddd; }
-      .panel { border: 1px solid #ccc; border-radius: 8px; padding: 1rem; margin-bottom: 1.2rem; }
-      .ok { color: #2e7d32; } .warn { color: #e65100; }
-      input { padding: 0.35rem; margin: 0.2rem 0; }
-      button { padding: 0.35rem 0.65rem; cursor: pointer; margin-right: 0.35rem; }
-      .btn-aprob { background: #2e7d32; color: #fff; border: none; border-radius: 4px; }
-      .btn-rech { background: #c62828; color: #fff; border: none; border-radius: 4px; }
-      .enlace-box { word-break: break-all; background: #f5f5f5; padding: 0.6rem; border-radius: 6px; }
+      th, td { text-align: left; padding: 0.45rem; border-bottom: 1px solid var(--border); }
+      .panel { border: 1px solid var(--border); border-radius: 8px; padding: 1rem; margin-bottom: 1.2rem; background: var(--bg-panel); }
+      .help { font-size: 0.88rem; color: var(--text-muted); }
+      .ok { color: var(--color-ok); } .warn { color: var(--color-warn); }
+      .vencida { color: var(--color-error); font-weight: bold; }
+      input { padding: 0.35rem; margin: 0.2rem 0; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-body); color: var(--text-primary); }
+      button { padding: 0.35rem 0.65rem; cursor: pointer; margin-right: 0.35rem; border-radius: 4px; }
+      .btn-aprob { background: var(--color-ok); color: #fff; border: none; }
+      .btn-rech { background: var(--color-error); color: #fff; border: none; }
+      .btn-renovar { background: var(--btn-bg); color: var(--btn-text); border: 1px solid var(--btn-border); }
+      .enlace-box { word-break: break-all; background: var(--enlace-bg); padding: 0.6rem; border-radius: 6px; border: 1px dashed var(--border); }
     </style>
   </head>
   <body>
     <div class="pagina">
       {% include 'partials/barra_superior.html' %}
       <h1>{{ t('admin_altas_heading') }}</h1>
-      <p>{{ t('admin_altas_intro') }}</p>
+      <p>{{ t('admin_altas_intro', dias=dias_suscripcion) }}</p>
 
       {% with messages = get_flashed_messages(with_categories=true) %}
       {% for cat, msg in messages %}
@@ -56,7 +81,7 @@
             <label>{{ t('alta_nombre_label') }}</label><br />
             <input name="nombre" type="text" />
           </div>
-          <p><button type="submit">{{ t('admin_altas_btn_generar') }}</button></p>
+          <p><button type="submit" class="btn-renovar">{{ t('admin_altas_btn_generar') }}</button></p>
         </form>
       </div>
 
@@ -98,6 +123,48 @@
       </table>
       {% endif %}
 
+      <h2>{{ t('admin_gestion_suscripciones_titulo') }}</h2>
+      <p class="help">{{ t('admin_gestion_suscripciones_intro') }}</p>
+      {% if not suscriptores %}
+      <p>{{ t('admin_gestion_suscripciones_vacio') }}</p>
+      {% else %}
+      <table>
+        <thead>
+          <tr>
+            <th>{{ t('alta_cuit_label') }}</th>
+            <th>{{ t('alta_email_label') }}</th>
+            <th>{{ t('admin_gestion_col_vencimiento') }}</th>
+            <th>{{ t('admin_gestion_col_dias') }}</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for s in suscriptores %}
+          <tr>
+            <td>{{ s.cuit_fmt or s.cuit }}</td>
+            <td>{{ s.email or '—' }}</td>
+            <td>{{ s.valido_hasta_fmt }}</td>
+            <td class="{{ 'vencida' if s.vencida else '' }}">
+              {% if s.dias_restantes is none %}—
+              {% elif s.vencida %}{{ t('admin_gestion_estado_vencida') }} ({{ s.dias_restantes * -1 }} d.)
+              {% elif s.dias_restantes == 0 %}{{ t('admin_gestion_estado_activa') }} (hoy)
+              {% elif s.dias_restantes == 1 %}1 día
+              {% else %}{{ s.dias_restantes }} días
+              {% endif %}
+            </td>
+            <td>
+              <form method="post" style="display:inline">
+                <input type="hidden" name="accion" value="renovar" />
+                <input type="hidden" name="cuit" value="{{ s.cuit }}" />
+                <button type="submit" class="btn-renovar">{{ t('admin_gestion_btn_renovar', dias=dias_suscripcion) }}</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% endif %}
+
       <h2>{{ t('admin_altas_historial_titulo') }}</h2>
       {% if not altas %}
       <p>{{ t('admin_altas_vacio') }}</p>
@@ -124,5 +191,7 @@
       </table>
       {% endif %}
     </div>
+    <script type="application/json" id="i18n-js">{{ i18n_js | tojson }}</script>
+    <script src="{{ url_for('static', filename='tema.js') }}"></script>
   </body>
 </html>

@@ -57,6 +57,17 @@
     {% if mostrar_logout | default(true) %}
     <div class="barra-logout">
       <a href="{{ url_for('logout') }}">{{ t('logout_link') }}</a>
+      {% if suscripcion_dias_restantes is not none %}
+      <div class="barra-suscripcion{% if suscripcion_dias_restantes < 0 %} barra-suscripcion-vencida{% endif %}">
+        {% if suscripcion_dias_restantes < 0 %}
+        {{ t('suscripcion_vencida') }}
+        {% elif suscripcion_dias_restantes == 1 %}
+        {{ t('suscripcion_dia_restante', fecha=suscripcion_vencimiento_fmt) }}
+        {% else %}
+        {{ t('suscripcion_dias_restantes', dias=suscripcion_dias_restantes, fecha=suscripcion_vencimiento_fmt) }}
+        {% endif %}
+      </div>
+      {% endif %}
     </div>
     {% endif %}
   </div>
