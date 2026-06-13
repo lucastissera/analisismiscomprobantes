@@ -507,7 +507,9 @@
         }
 
         function poll(jobId) {
-          fetch("{{ url_for('dfe_estado', job_id='__ID__') }}".replace("__ID__", jobId))
+          fetch("{{ url_for('dfe_estado', job_id='__ID__') }}".replace("__ID__", jobId), {
+            credentials: "same-origin",
+          })
             .then(function (r) { return r.json(); })
             .then(function (st) {
               if (st.error === "job_not_found") return;
@@ -550,24 +552,33 @@
           errProg.style.display = "none";
           logBox.textContent = "";
           var fd = new FormData(form);
-          fetch(form.action, { method: "POST", body: fd, headers: { "X-Requested-With": "fetch" } })
-            .then(function (r) { return r.json(); })
-            .then(function (data) {
-              if (data.error) {
+          fetch(form.action, {
+            method: "POST",
+            body: fd,
+            credentials: "same-origin",
+            headers: { "X-Requested-With": "fetch" },
+          })
+            .then(function (r) {
+              return r.json().then(function (data) {
+                return { ok: r.ok, data: data };
+              });
+            })
+            .then(function (res) {
+              if (!res.ok || res.data.error) {
                 errBox.style.display = "block";
-                errBox.textContent = data.error;
+                errBox.textContent = (res.data && res.data.error) || "Error";
                 btn.disabled = false;
                 btn.textContent = "{{ t('dfe_submit') }}";
                 return;
               }
-              if (data.job_id) {
-                timer = setInterval(function () { poll(data.job_id); }, 1200);
-                poll(data.job_id);
+              if (res.data.job_id) {
+                timer = setInterval(function () { poll(res.data.job_id); }, 1200);
+                poll(res.data.job_id);
               }
             })
             .catch(function () {
               errBox.style.display = "block";
-              errBox.textContent = "Error de red.";
+              errBox.textContent = I18N.errorRed || "Error de red.";
               btn.disabled = false;
               btn.textContent = "{{ t('dfe_submit') }}";
             });
