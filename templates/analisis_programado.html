@@ -174,7 +174,7 @@
         <div class="panel">
           <h2>{{ t('ap_import_titulo') }}</h2>
           <p class="help">{{ t('ap_import_help')|safe }}</p>
-          <p><a href="{{ url_for('analisis_programado_plantilla') }}" download="Formato Analisis Programado.xlsx">{{ t('ap_import_descargar') }}</a></p>
+          <p><a href="{{ url_for('analisis_programado_plantilla') }}" download="Formato Analisis Programado.xlsx" target="_blank" rel="noopener noreferrer">{{ t('ap_import_descargar') }}</a></p>
           <label><strong>{{ t('ap_import_label_file') }}</strong>
             <input type="file" name="ap_excel" accept=".xlsx" />
           </label>
@@ -455,6 +455,9 @@
 
         form.addEventListener("submit", function (ev) {
           ev.preventDefault();
+          if (McCancelarDescarga.activo && McCancelarDescarga.activo() === "ap") {
+            return;
+          }
           if (!validarFormulario()) return;
           btn.disabled = true;
           McElegirCarpeta.resolver({
@@ -625,10 +628,24 @@
         var logBox = document.getElementById("ap-log");
         var okBox = document.getElementById("ap-resultado-ok");
         var errProg = document.getElementById("ap-error-progreso");
-        var timer = null;
-        var cancelUiLocal = false;
+        var pollActivo = true;
+        var pollTimer = null;
         var ultimoEstadoAp = "idle";
         var ultimaCarpetaAp = "";
+
+        function detenerPoll() {
+          pollActivo = false;
+          if (pollTimer) {
+            clearTimeout(pollTimer);
+            pollTimer = null;
+          }
+        }
+
+        function programarPoll(ms) {
+          if (!pollActivo) return;
+          if (pollTimer) clearTimeout(pollTimer);
+          pollTimer = setTimeout(hacerPoll, ms || 1500);
+        }
 
         function pintaPasos(pasos) {
           if (!pasos || !pasos.length) return;
@@ -659,10 +676,6 @@
 
         function actualizar(st) {
           if (!st || st.estado === "idle") return;
-          if (st.estado === "cancelado" || st.estado === "ok" || st.estado === "error") {
-            cancelUiLocal = false;
-          }
-          if (cancelUiLocal) return;
           prog.style.display = "block";
           barra.style.width = (st.porcentaje || 0) + "%";
           msg.textContent = st.mensaje || "";
@@ -702,6 +715,8 @@
             var btnEjErr = document.getElementById("btn-ejecutar-ahora");
             if (btnEjErr) btnEjErr.disabled = false;
           } else if (st.estado === "en_progreso") {
+            errProg.style.display = "none";
+            okBox.style.display = "none";
             McCancelarDescarga.registrar("ap", null);
           } else {
             okBox.style.display = "none";
@@ -709,41 +724,53 @@
           }
         }
 
-        function poll() {
+        function hacerPoll() {
+          if (!pollActivo) return;
           fetch("{{ url_for('analisis_programado_ejecucion') }}", { credentials: "same-origin" })
             .then(function (r) { return r.json(); })
             .then(function (st) {
+              if (!pollActivo) return;
               if (
                 st.estado === "en_progreso" &&
                 (ultimoEstadoAp !== "en_progreso" || (st.carpeta && st.carpeta !== ultimaCarpetaAp))
               ) {
                 McCarpetaWebSync.reset("ap");
                 ultimaCarpetaAp = st.carpeta || "";
-                McElegirCarpeta.confirmarPermisoParaEjecucion();
               }
               ultimoEstadoAp = st.estado || "idle";
               McCarpetaWebSync.syncDesdeEstado(st, "ap");
               actualizar(st);
-              if (st.estado === "en_progreso" && !timer) {
-                timer = setInterval(poll, 1500);
+              if (st.estado === "en_progreso") {
+                programarPoll(1500);
               } else if (st.estado === "ok" || st.estado === "error" || st.estado === "cancelado") {
-                if (timer) { clearInterval(timer); timer = null; }
+                detenerPoll();
+              } else {
+                programarPoll(2500);
               }
             })
-            .catch(function () {});
+            .catch(function () {
+              programarPoll(2500);
+            });
         }
 
-        poll();
-        timer = setInterval(poll, 2500);
+        document.addEventListener("visibilitychange", function () {
+          if (!document.hidden && pollActivo) hacerPoll();
+        });
+
+        McCancelarDescarga.setDetenerPoll(detenerPoll);
+        hacerPoll();
+        programarPoll(2500);
 
         McCancelarDescarga.enlazar(document.getElementById("ap-btn-cancelar"), {
           confirm: I18N.cancelarConfirm,
-          progreso: prog,
           errProg: errProg,
           okBox: okBox,
           mensajeCancelado: I18N.msgCancelado,
           onReset: function () {
-            cancelUiLocal = true;
+            if (errProg) {
+              errProg.style.display = "block";
+              errProg.textContent = I18N.msgCancelado;
+            }
           },
         });
       })();

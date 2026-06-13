@@ -32,6 +32,14 @@
       : null;
     if (!handle || !archivos || !archivos.length) return;
 
+    if (
+      global.McElegirCarpeta &&
+      global.McElegirCarpeta.permisoEscrituraActivo
+    ) {
+      var okPerm = await global.McElegirCarpeta.permisoEscrituraActivo();
+      if (!okPerm) return;
+    }
+
     function rutaDestino(rutaRelativa) {
       var norm = String(rutaRelativa || "").replace(/\\/g, "/");
       var sesion =

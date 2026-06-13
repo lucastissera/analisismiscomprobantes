@@ -222,12 +222,17 @@
     });
   }
 
-  function confirmarPermisoEscritura(handle) {
+  function confirmarPermisoEscritura(handle, opts) {
+    opts = opts || {};
+    var solicitar = opts.solicitar !== false;
     if (!handle || typeof handle.queryPermission !== "function") {
       return Promise.resolve(handle);
     }
     return handle.queryPermission({ mode: "readwrite" }).then(function (perm) {
       if (perm === "granted") return handle;
+      if (!solicitar) {
+        return Promise.reject(new Error("picker_permiso_pendiente"));
+      }
       if (typeof handle.requestPermission !== "function") {
         throw new Error("picker_permiso_denegado");
       }
@@ -542,9 +547,23 @@
     if (esModoEscritorio()) return Promise.resolve(true);
     var h = _dirHandle || _parentHandle;
     if (!h) return Promise.resolve(false);
-    return confirmarPermisoEscritura(h)
+    return confirmarPermisoEscritura(h, { solicitar: false })
       .then(function () {
         return true;
+      })
+      .catch(function () {
+        return false;
+      });
+  }
+
+  function permisoEscrituraActivo() {
+    if (esModoEscritorio()) return Promise.resolve(true);
+    var h = _dirHandle || _parentHandle;
+    if (!h || typeof h.queryPermission !== "function") return Promise.resolve(false);
+    return h
+      .queryPermission({ mode: "readwrite" })
+      .then(function (perm) {
+        return perm === "granted";
       })
       .catch(function () {
         return false;
@@ -557,6 +576,7 @@
     resolver: resolverCarpeta,
     postForm: postForm,
     confirmarPermisoParaEjecucion: confirmarPermisoParaEjecucion,
+    permisoEscrituraActivo: permisoEscrituraActivo,
     requiereCarpeta: requiereCarpeta,
     esModoEscritorio: esModoEscritorio,
     soporteCarpetaWeb: soporteCarpetaWeb,
