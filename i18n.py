@@ -407,6 +407,8 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ap_manual_agregar": "Agregar otra fila",
         "ap_manual_quitar": "Quitar fila",
         "ap_carpeta_destino": "Carpeta donde se guardarán las descargas programadas",
+        "ap_carpeta_modo_web": "Elegí una carpeta contenedora. Luego, se creará una subcarpeta «Mis Comprobantes fecha y hora».",
+        "ap_carpeta_permiso_navegador": "Después de elegir la carpeta, Chrome o Edge mostrarán un aviso pidiendo permiso de escritura. Tocá Permitir (es obligatorio en la web; no se puede omitir).",
         "ap_submit": "Guardar programación",
         "ap_ejecutar_ahora": "Ejecutar ahora",
         "ap_ejecutar_iniciado": "Ejecución iniciada. Podés seguir el progreso abajo.",

@@ -19,6 +19,8 @@ _LOG = logging.getLogger(__name__)
 
 _lock = threading.Lock()
 _ejecutando = False
+_ejecucion_seq = 0
+_ejecucion_activa_seq = 0
 _scheduler_iniciado = False
 
 SISTEMAS_VALIDOS = frozenset({"mis_comprobantes", "dfe", "nuestra_parte"})
@@ -270,11 +272,13 @@ def ejecutar_analisis_programado(
     on_log: Callable[[str], None] | None = None,
     manual: bool = False,
     _reservado: bool = False,
+    _seq: int | None = None,
 ) -> dict[str, Any]:
     """Ejecuta los sistemas seleccionados. Devuelve resumen del resultado."""
     global _ejecutando
     from cuit_en_arca.progreso_analisis_programado import (
         callback_log_ap,
+        ejecutando_ap,
         iniciar_ejecucion_ap,
         marcar_cancelado_ap,
         marcar_error_ap,
@@ -286,7 +290,7 @@ def ejecutar_analisis_programado(
 
     if not _reservado:
         with _lock:
-            if _ejecutando:
+            if _ejecutando or ejecutando_ap():
                 return {"ok": False, "mensaje": "Ya hay una ejecución programada en curso."}
             _ejecutando = True
 
@@ -521,7 +525,8 @@ def ejecutar_analisis_programado(
         return resultado
     finally:
         with _lock:
-            _ejecutando = False
+            if _seq is None or _seq == _ejecucion_activa_seq:
+                _ejecutando = False
 
 
 _INTERVALO_SCHEDULER_CERCA = 15.0
@@ -558,16 +563,20 @@ def lanzar_ejecucion_ap(
     manual: bool = False,
 ) -> tuple[bool, str]:
     """Ejecuta en un hilo de fondo. Devuelve (ok, mensaje_error)."""
-    global _ejecutando
+    global _ejecutando, _ejecucion_seq, _ejecucion_activa_seq
+    from cuit_en_arca.progreso_analisis_programado import ejecutando_ap
 
     with _lock:
-        if _ejecutando:
+        if ejecutando_ap():
             return False, "Ya hay una ejecución en curso."
+        _ejecucion_seq += 1
+        seq = _ejecucion_seq
+        _ejecucion_activa_seq = seq
         _ejecutando = True
 
     def _worker() -> None:
         try:
-            ejecutar_analisis_programado(cfg, manual=manual, _reservado=True)
+            ejecutar_analisis_programado(cfg, manual=manual, _reservado=True, _seq=seq)
         except Exception:
             _LOG.exception("Error en ejecución de análisis programado")
 
