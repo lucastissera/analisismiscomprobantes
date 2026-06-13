@@ -58,6 +58,13 @@ window.McLimpiarDatos = function (opts) {
     if (lab) lab.textContent = "—";
   }
 
+  if (window.McElegirCarpeta && window.McElegirCarpeta.esModoEscritorio && !window.McElegirCarpeta.esModoEscritorio()) {
+    if (window.McElegirCarpeta.limpiarCarpetaWeb) window.McElegirCarpeta.limpiarCarpetaWeb();
+  }
+  if (window.McCarpetaWebSync && window.McCarpetaWebSync.reset) {
+    window.McCarpetaWebSync.reset();
+  }
+
   if (typeof opts.onListo === "function") {
     opts.onListo();
   }

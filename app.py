@@ -82,6 +82,7 @@ from cuit_en_arca.planilla_lote import (
     parsear_entradas_manuales,
 )
 from cuit_en_arca.progreso_lote import (
+    agregar_archivo_lote,
     callback_paso,
     callback_progreso,
     crear_job,
@@ -92,6 +93,7 @@ from cuit_en_arca.progreso_lote import (
     reiniciar_pasos,
 )
 from cuit_en_arca.progreso_dfe import (
+    agregar_archivo_dfe,
     agregar_resumen_cuit_dfe,
     callback_log_dfe,
     callback_paso_dfe,
@@ -108,6 +110,7 @@ from cuit_en_arca.planilla_nuestra_parte import (
     parsear_entradas_manuales_np,
 )
 from cuit_en_arca.progreso_nuestra_parte import (
+    agregar_archivo_np,
     agregar_resumen_cuit_np,
     callback_log_np,
     callback_paso_np,
@@ -158,13 +161,48 @@ app.config["SESSION_REFRESH_EACH_REQUEST"] = True
 # download_id -> (bytes, nombre_archivo, mimetype)
 DESCARGAS: dict[str, tuple[bytes, str, str]] = {}
 
+from cuit_en_arca.entrega_web import init_descargas  # noqa: E402
+
+init_descargas(DESCARGAS)
+
 # Inactividad: sin peticiones al servidor durante este tiempo → cerrar sesión.
 # Cada petición (refresco, nueva pestaña con la misma app, navegación) renueva el plazo.
 _SESSION_IDLE_SEC = 30 * 60
 
 
+def _es_app_escritorio() -> bool:
+    return getattr(sys, "frozen", False)
+
+
+def _fabricar_entrega(
+    job_id: str,
+    carpeta_form: str | None,
+    agregar_estado,
+):
+    from cuit_en_arca.entrega_web import EntregaWeb, carpeta_trabajo_web, make_registrar
+
+    if _es_app_escritorio():
+        p = (carpeta_form or "").strip()
+        if not p:
+            return None, None
+        return Path(p), None
+    base = carpeta_trabajo_web(job_id)
+    return base, EntregaWeb(base, make_registrar(agregar_estado))
+
+
+def _wrap_progreso_con_entrega(on_prog, entrega):
+    if entrega is None or on_prog is None:
+        return on_prog
+
+    def _cb(actual, total, mensaje, fila_terminada=False):
+        on_prog(actual, total, mensaje, fila_terminada)
+        if fila_terminada:
+            entrega.escanear()
+
+    return _cb
+
+
 def _safe_internal_path(target: str | None) -> str:
-    """Solo rutas relativas del mismo sitio (evita redirecciones abiertas)."""
     if not target or not isinstance(target, str):
         return url_for("index")
     t = target.strip()
@@ -874,14 +912,26 @@ def arca_descarga_lote():
             return jsonify({"error": err_imp}), 400
         return render_template("index.html", error=err_imp)
 
-    carpeta_destino = (request.form.get("carpeta_destino") or "").strip() or None
+    carpeta_form = (request.form.get("carpeta_destino") or "").strip() or None
 
     job_id = uuid4().hex
+    base, entrega = _fabricar_entrega(
+        job_id,
+        carpeta_form,
+        lambda did, rel, nom: agregar_archivo_lote(job_id, did, rel, nom),
+    )
+    if base is None:
+        msg = tr(lg, "carpeta_cancelada")
+        if request.headers.get("X-Requested-With") == "fetch":
+            return jsonify({"error": msg}), 400
+        return render_template("index.html", error=msg)
+    carpeta_destino = str(base)
+
     from cuit_en_arca.cancelacion import reset_cancelacion
 
     reset_cancelacion(job_id)
     crear_job(job_id, len(filas))
-    on_prog = callback_progreso(job_id)
+    on_prog = _wrap_progreso_con_entrega(callback_progreso(job_id), entrega)
     on_paso = callback_paso(job_id)
 
     def _on_reiniciar() -> None:
@@ -899,6 +949,8 @@ def arca_descarga_lote():
                 carpeta_destino=carpeta_destino,
                 job_id=job_id,
             )
+            if entrega:
+                entrega.escanear()
             if resultado.carpeta:
                 # Modo carpeta: los archivos ya están en disco, sin descarga.
                 fallos = list(resultado.ingresos_fallidos) + list(resultado.advertencias)
@@ -1042,9 +1094,21 @@ def dfe_descargar():
     # DFE siempre visible para que el usuario siga el proceso en pantalla.
     headless = False
 
-    carpeta_destino = (request.form.get("carpeta_destino") or "").strip() or None
+    carpeta_form = (request.form.get("carpeta_destino") or "").strip() or None
 
     job_id = uuid4().hex
+    base, entrega = _fabricar_entrega(
+        job_id,
+        carpeta_form,
+        lambda did, rel, nom: agregar_archivo_dfe(job_id, did, rel, nom),
+    )
+    if base is None:
+        msg = tr(lg, "carpeta_cancelada")
+        if es_fetch:
+            return jsonify({"error": msg}), 400
+        return render_template("dfe.html", error=msg)
+    carpeta_destino = str(base)
+
     from cuit_en_arca.cancelacion import reset_cancelacion
 
     reset_cancelacion(job_id)
@@ -1067,6 +1131,8 @@ def dfe_descargar():
             total_archivos=total_archivos,
             error=error,
         )
+        if entrega:
+            entrega.escanear()
 
     def _worker() -> None:
         try:
@@ -1081,6 +1147,8 @@ def dfe_descargar():
                 carpeta_base=carpeta_destino,
                 job_id=job_id,
             )
+            if entrega:
+                entrega.escanear()
             marcar_ok_dfe(job_id, carpeta=str(carpeta))
         except CancelacionUsuarioError as exc:
             marcar_cancelado_dfe(job_id, str(exc))
@@ -1186,9 +1254,21 @@ def np_descargar():
         "yes",
         "on",
     )
-    carpeta_destino = (request.form.get("carpeta_destino") or "").strip() or None
+    carpeta_form = (request.form.get("carpeta_destino") or "").strip() or None
 
     job_id = uuid4().hex
+    base, entrega = _fabricar_entrega(
+        job_id,
+        carpeta_form,
+        lambda did, rel, nom: agregar_archivo_np(job_id, did, rel, nom),
+    )
+    if base is None:
+        msg = tr(lg, "carpeta_cancelada")
+        if es_fetch:
+            return jsonify({"error": msg}), 400
+        return render_template("nuestra_parte.html", error=msg)
+    carpeta_destino = str(base)
+
     from cuit_en_arca.cancelacion import reset_cancelacion
 
     reset_cancelacion(job_id)
@@ -1211,6 +1291,8 @@ def np_descargar():
             total_archivos=total_archivos,
             error=error,
         )
+        if entrega:
+            entrega.escanear()
 
     def _worker() -> None:
         try:
@@ -1225,6 +1307,8 @@ def np_descargar():
                 carpeta_base=carpeta_destino,
                 job_id=job_id,
             )
+            if entrega:
+                entrega.escanear()
             marcar_ok_np(job_id, carpeta=str(carpeta))
         except CancelacionUsuarioError as exc:
             marcar_cancelado_np(job_id, str(exc))
@@ -1371,7 +1455,7 @@ def analisis_programado_guardar():
         )
 
     carpeta = (request.form.get("carpeta_destino") or "").strip()
-    if not carpeta:
+    if _es_app_escritorio() and not carpeta:
         msg = tr(lg, "ap_err_sin_carpeta")
         if es_fetch:
             return jsonify({"error": msg}), 400
@@ -1380,6 +1464,10 @@ def analisis_programado_guardar():
             error=msg,
             config=cargar_config().a_dict_publico(),
         )
+    if not _es_app_escritorio():
+        from cuit_en_arca.entrega_web import carpeta_ap_servidor
+
+        carpeta = str(carpeta_ap_servidor())
 
     filas, _errores, err_msg = _filas_ap_desde_peticion(lg)
     if err_msg:

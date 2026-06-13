@@ -1,18 +1,32 @@
-/** Diálogo nativo de carpeta vía GET /elegir-carpeta (solo app de escritorio). */
+/** Carpeta de destino: diálogo nativo (.exe) o File System Access API (web). */
 (function (global) {
+  var _dirHandle = null;
+  var _dirNombre = "";
+
   function esModoEscritorio() {
     return global.MC_MODO_ESCRITORIO === true;
   }
 
-  /** En web no hace falta carpeta; en escritorio sí si el usuario no eligió. */
-  function requiereCarpeta(ruta) {
-    return esModoEscritorio() && !String(ruta || "").trim();
+  function soporteCarpetaWeb() {
+    return typeof global.showDirectoryPicker === "function";
   }
 
-  function elegirCarpeta(titulo) {
-    if (!esModoEscritorio()) {
-      return Promise.resolve(null);
+  function requiereCarpeta(ruta) {
+    if (esModoEscritorio()) {
+      return !String(ruta || "").trim();
     }
+    return !_dirHandle;
+  }
+
+  function obtenerHandleWeb() {
+    return _dirHandle;
+  }
+
+  function obtenerNombreWeb() {
+    return _dirNombre;
+  }
+
+  function elegirCarpetaNativa(titulo) {
     var q = encodeURIComponent(titulo || "Elegir carpeta de descarga");
     return fetch("/elegir-carpeta?titulo=" + q, { credentials: "same-origin" })
       .then(function (r) {
@@ -26,16 +40,34 @@
       });
   }
 
+  function elegirCarpetaWeb(titulo) {
+    if (!soporteCarpetaWeb()) {
+      return Promise.reject(new Error("picker_web_no_soportado"));
+    }
+    return global.showDirectoryPicker({ mode: "readwrite", id: "aic-carpeta" })
+      .then(function (handle) {
+        _dirHandle = handle;
+        _dirNombre = handle.name || "Carpeta";
+        return _dirNombre;
+      })
+      .catch(function (err) {
+        if (err && err.name === "AbortError") return null;
+        throw err;
+      });
+  }
+
+  function elegirCarpeta(titulo) {
+    if (esModoEscritorio()) {
+      return elegirCarpetaNativa(titulo);
+    }
+    return elegirCarpetaWeb(titulo);
+  }
+
   function configurarUiWeb(opts) {
     if (esModoEscritorio()) return;
-    var btn = opts.btnId ? document.getElementById(opts.btnId) : null;
-    if (btn) btn.style.display = "none";
-    var row = btn && btn.closest(".carpeta-row");
-    if (!row) return;
-    var hint = opts.webHint || "";
-    if (!hint) return;
-    var help = row.querySelector(".help, .arca-manual-help, p");
-    if (help) help.textContent = hint;
+    if (!soporteCarpetaWeb() && opts.onError) {
+      opts.onError(new Error("picker_web_no_soportado"));
+    }
   }
 
   function enlazar(opts) {
@@ -52,9 +84,6 @@
     }
 
     function picker() {
-      if (!esModoEscritorio()) {
-        return Promise.resolve(null);
-      }
       if (btn) btn.disabled = true;
       return elegirCarpeta(titulo)
         .then(function (ruta) {
@@ -74,7 +103,7 @@
         });
     }
 
-    if (btn && esModoEscritorio()) {
+    if (btn) {
       btn.addEventListener("click", function () {
         picker().catch(function () {});
       });
@@ -83,7 +112,10 @@
     return {
       elegir: picker,
       obtener: function () {
-        return ((input && input.value) || "").trim();
+        if (esModoEscritorio()) {
+          return ((input && input.value) || "").trim();
+        }
+        return _dirNombre || "";
       },
       aplicar: aplicar,
     };
@@ -91,12 +123,18 @@
 
   function resolverCarpeta(opts) {
     var api = opts.api;
-    if (!esModoEscritorio()) {
-      return Promise.resolve("");
+    if (esModoEscritorio()) {
+      var actual = api.obtener();
+      if (actual) return Promise.resolve(actual);
+      return api.elegir();
     }
-    var actual = api.obtener();
-    if (actual) return Promise.resolve(actual);
+    if (_dirHandle) return Promise.resolve(_dirNombre);
     return api.elegir();
+  }
+
+  function limpiarCarpetaWeb() {
+    _dirHandle = null;
+    _dirNombre = "";
   }
 
   global.McElegirCarpeta = {
@@ -105,5 +143,8 @@
     resolver: resolverCarpeta,
     requiereCarpeta: requiereCarpeta,
     esModoEscritorio: esModoEscritorio,
+    soporteCarpetaWeb: soporteCarpetaWeb,
+    obtenerHandleWeb: obtenerHandleWeb,
+    limpiarCarpetaWeb: limpiarCarpetaWeb,
   };
 })(window);

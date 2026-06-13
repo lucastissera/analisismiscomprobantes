@@ -352,6 +352,7 @@
 
     <script type="application/json" id="i18n-js">{{ i18n_js | tojson }}</script>
     <script src="{{ url_for('static', filename='elegir_carpeta.js') }}"></script>
+    <script src="{{ url_for('static', filename='carpeta_web_sync.js') }}"></script>
     <script src="{{ url_for('static', filename='cancelar_descarga.js') }}"></script>
     <script src="{{ url_for('static', filename='limpiar_datos.js') }}"></script>
     <script src="{{ url_for('static', filename='clave_fiscal.js') }}"></script>
@@ -365,6 +366,7 @@
         quitar: {{ t('dfe_manual_quitar')|tojson }},
         carpetaTitulo: {{ t('carpeta_elegir_titulo')|tojson }},
         carpetaModoWeb: {{ t('carpeta_modo_web')|tojson }},
+        errCarpetaWebApi: {{ t('err_carpeta_web_api')|tojson }},
         carpetaCancelada: {{ t('carpeta_cancelada')|tojson }},
         fallosTitulo: {{ t('fallos_detalle_titulo')|tojson }},
         fallosArchivo: {{ t('fallos_ver_archivo')|tojson }},
@@ -430,9 +432,13 @@
             errBox.style.display = "block";
             errBox.textContent = I18N.carpetaCancelada || "No se eligió carpeta.";
           },
-          onError: function () {
+          onError: function (err) {
             errBox.style.display = "block";
-            errBox.textContent = I18N.carpetaCancelada || "No se eligió carpeta.";
+            var msg = I18N.carpetaCancelada || "No se eligió carpeta.";
+            if (err && err.message === "picker_web_no_soportado") {
+              msg = I18N.errCarpetaWebApi || msg;
+            }
+            errBox.textContent = msg;
           },
         });
 
@@ -488,6 +494,7 @@
             .then(function (r) { return r.json(); })
             .then(function (st) {
               if (st.error === "job_not_found") return;
+              McCarpetaWebSync.syncDesdeEstado(st, jobId);
               barra.style.width = (st.porcentaje || 0) + "%";
               msg.textContent = st.mensaje || "";
               pintaPasos(st.pasos);

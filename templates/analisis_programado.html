@@ -230,6 +230,7 @@
 
     <script type="application/json" id="i18n-js">{{ i18n_js | tojson }}</script>
     <script src="{{ url_for('static', filename='elegir_carpeta.js') }}"></script>
+    <script src="{{ url_for('static', filename='carpeta_web_sync.js') }}"></script>
     <script src="{{ url_for('static', filename='cancelar_descarga.js') }}"></script>
     <script src="{{ url_for('static', filename='limpiar_datos.js') }}"></script>
     <script src="{{ url_for('static', filename='clave_fiscal.js') }}"></script>
@@ -239,6 +240,7 @@
       var I18N = {
         carpetaTitulo: {{ t('carpeta_elegir_titulo')|tojson }},
         carpetaModoWeb: {{ t('carpeta_modo_web')|tojson }},
+        errCarpetaWebApi: {{ t('err_carpeta_web_api')|tojson }},
         carpetaCancelada: {{ t('carpeta_cancelada')|tojson }},
         errorGuardar: {{ t('ap_err_guardar')|tojson }},
         sinSistema: {{ t('ap_err_sin_sistema')|tojson }},
@@ -362,8 +364,11 @@
             errBox.textContent = I18N.carpetaCancelada;
             errBox.style.display = "block";
           },
-          onError: function () {
+          onError: function (err) {
             errBox.textContent = I18N.carpetaCancelada;
+            if (err && err.message === "picker_web_no_soportado") {
+              errBox.textContent = I18N.errCarpetaWebApi || I18N.carpetaCancelada;
+            }
             errBox.style.display = "block";
           },
         });
@@ -608,6 +613,7 @@
           fetch("{{ url_for('analisis_programado_ejecucion') }}", { credentials: "same-origin" })
             .then(function (r) { return r.json(); })
             .then(function (st) {
+              McCarpetaWebSync.syncDesdeEstado(st, "ap");
               actualizar(st);
               if (st.estado === "en_progreso" && !timer) {
                 timer = setInterval(poll, 1500);

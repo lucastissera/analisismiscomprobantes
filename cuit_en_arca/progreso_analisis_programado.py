@@ -31,6 +31,7 @@ class EstadoEjecucionAP:
     log: list[str] = field(default_factory=list)
     pasos: list[dict[str, str]] = field(default_factory=list)
     fallos: list[str] = field(default_factory=list)
+    archivos: list[dict[str, str]] = field(default_factory=list)
 
     def a_dict(self) -> dict[str, Any]:
         pct = 0
@@ -49,6 +50,7 @@ class EstadoEjecucionAP:
             "log": list(self.log),
             "pasos": list(self.pasos),
             "fallos": list(self.fallos[:50]),
+            "archivos": list(self.archivos),
         }
 
 
@@ -100,6 +102,13 @@ def marcar_paso_ap(clave: str, estado: str) -> None:
                 break
         ok = sum(1 for p in _estado.pasos if p["estado"] == "ok")
         _estado.actual = ok
+
+
+def agregar_archivo_ap(download_id: str, ruta: str, nombre: str) -> None:
+    with _lock:
+        if _estado is None:
+            return
+        _estado.archivos.append({"id": download_id, "ruta": ruta, "nombre": nombre})
 
 
 def marcar_ok_ap(*, carpeta: str, mensaje: str, fallos: list[str] | None = None) -> None:

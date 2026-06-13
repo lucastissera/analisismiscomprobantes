@@ -258,6 +258,13 @@ def ejecutar_analisis_programado(
         filas_ap = _filas_desde_config(cfg)
         base = _carpeta_ejecucion(cfg.carpeta_destino)
         resultado["carpeta"] = str(base)
+        entrega = None
+        if not getattr(sys, "frozen", False):
+            from cuit_en_arca.entrega_web import EntregaWeb, make_registrar
+            from cuit_en_arca.progreso_analisis_programado import agregar_archivo_ap
+
+            entrega = EntregaWeb(base, make_registrar(agregar_archivo_ap))
+            entrega.escanear()
         log(f"Inicio análisis programado → {base}")
         marcar_paso_ap("preparacion", "ok")
 
@@ -306,6 +313,8 @@ def ejecutar_analisis_programado(
             else:
                 log("Mis Comprobantes: sin filas con fechas en la planilla.")
                 marcar_paso_ap("mis_comprobantes", "ok")
+            if entrega:
+                entrega.escanear()
 
         if "dfe" in cfg.sistemas:
             verificar_cancelacion(ap=True)
@@ -340,6 +349,8 @@ def ejecutar_analisis_programado(
             else:
                 log("DFE: sin filas con fechas en la planilla.")
                 marcar_paso_ap("dfe", "ok")
+            if entrega:
+                entrega.escanear()
 
         if "nuestra_parte" in cfg.sistemas:
             verificar_cancelacion(ap=True)
@@ -374,12 +385,16 @@ def ejecutar_analisis_programado(
             else:
                 log("Nuestra Parte: sin filas con ejercicio en la planilla.")
                 marcar_paso_ap("nuestra_parte", "ok")
+            if entrega:
+                entrega.escanear()
 
         from cuit_en_arca.fallos_arca import escribir_fallos_txt
 
         marcar_paso_ap("finalizado", "en_curso")
         if resultado["fallos"]:
             escribir_fallos_txt(base, otros=resultado["fallos"])
+            if entrega:
+                entrega.escanear()
             resultado["ok"] = any(
                 s.get("descargas_ok", 0) > 0 or s.get("carpeta")
                 for s in resultado["sistemas"].values()

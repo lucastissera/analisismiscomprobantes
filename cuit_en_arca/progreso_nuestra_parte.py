@@ -35,6 +35,7 @@ class EstadoJobNP:
     log: list[str] = field(default_factory=list)
     resumen: list[dict[str, Any]] = field(default_factory=list)
     pasos: list[dict[str, str]] = field(default_factory=list)
+    archivos: list[dict[str, str]] = field(default_factory=list)
 
     def a_dict(self) -> dict[str, Any]:
         pct = 0
@@ -55,6 +56,7 @@ class EstadoJobNP:
             "log": list(self.log),
             "resumen": list(self.resumen),
             "pasos": list(self.pasos),
+            "archivos": list(self.archivos),
         }
 
 
@@ -145,6 +147,15 @@ def agregar_resumen_cuit_np(
             st.cuits_fallidos += 1
         else:
             st.cuits_ok += 1
+
+
+def agregar_archivo_np(job_id: str, download_id: str, ruta: str, nombre: str) -> None:
+    with _lock:
+        item = _jobs.get(job_id)
+        if not item:
+            return
+        st: EstadoJobNP = item["estado"]
+        st.archivos.append({"id": download_id, "ruta": ruta, "nombre": nombre})
 
 
 def marcar_ok_np(job_id: str, *, carpeta: str) -> None:

@@ -38,6 +38,7 @@ class EstadoJobLote:
     descargas_ok: int = 0
     ingresos_fallidos: int = 0
     fallos_detalle: list[str] = field(default_factory=list)
+    archivos: list[dict[str, str]] = field(default_factory=list)
     pasos: list[dict[str, str]] = field(default_factory=list)
     _inicio: float = field(default_factory=time.time)
     _duraciones: list[float] = field(default_factory=list)
@@ -61,6 +62,7 @@ class EstadoJobLote:
             "descargas_ok": self.descargas_ok,
             "ingresos_fallidos": self.ingresos_fallidos,
             "fallos_detalle": list(self.fallos_detalle),
+            "archivos": list(self.archivos),
             "porcentaje": pct,
             "pasos": list(self.pasos),
         }
@@ -129,6 +131,15 @@ def callback_paso(job_id: str) -> Callable[[str, str], None]:
                     break
 
     return _cb
+
+
+def agregar_archivo_lote(job_id: str, download_id: str, ruta: str, nombre: str) -> None:
+    with _lock:
+        item = _jobs.get(job_id)
+        if not item:
+            return
+        st: EstadoJobLote = item["estado"]
+        st.archivos.append({"id": download_id, "ruta": ruta, "nombre": nombre})
 
 
 def marcar_ok(

@@ -1787,6 +1787,7 @@
     </div>
     <script type="application/json" id="i18n-js">{{ i18n_js | tojson }}</script>
     <script src="{{ url_for('static', filename='elegir_carpeta.js') }}"></script>
+    <script src="{{ url_for('static', filename='carpeta_web_sync.js') }}"></script>
     <script src="{{ url_for('static', filename='cancelar_descarga.js') }}"></script>
     <script src="{{ url_for('static', filename='limpiar_datos.js') }}"></script>
     <script src="{{ url_for('static', filename='clave_fiscal.js') }}"></script>
@@ -2021,12 +2022,13 @@
                 "</p>";
             }
           },
-          onError: function () {
+          onError: function (err) {
             if (resultado) {
-              resultado.innerHTML =
-                '<p class="mensaje-error">' +
-                (I18N.carpeta_cancelada || "No se eligió carpeta.") +
-                "</p>";
+              var msg = I18N.carpetaCancelada || "No se eligió carpeta.";
+              if (err && err.message === "picker_web_no_soportado") {
+                msg = I18N.err_carpeta_web_api || msg;
+              }
+              resultado.innerHTML = '<p class="mensaje-error">' + msg + "</p>";
             }
           },
         });
@@ -2143,6 +2145,7 @@
               return r.json();
             })
             .then(function (st) {
+              McCarpetaWebSync.syncDesdeEstado(st, jobId);
               if (st.estado === "ok") {
                 McCancelarDescarga.limpiar();
                 mostrarOk(st);
