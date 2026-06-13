@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
-from cuit_en_arca.hora_log import hora_log_ar
+import threading
+from dataclasses import dataclass, field
 from typing import Any, Callable
+
+from cuit_en_arca.hora_log import hora_log_ar
 
 _lock = threading.Lock()
 _jobs: dict[str, dict[str, Any]] = {}
