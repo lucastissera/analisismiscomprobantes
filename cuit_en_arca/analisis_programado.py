@@ -13,6 +13,8 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Callable
 
+from cuit_en_arca.hora_log import ahora_ar_naive, fecha_hora_ar_texto
+
 _LOG = logging.getLogger(__name__)
 
 _lock = threading.Lock()
@@ -163,7 +165,20 @@ def pausar_programacion_tras_ejecucion(
 ) -> ConfigAnalisisProgramado:
     """Marca la ejecución como hecha y pausa hasta que el usuario guarde de nuevo."""
     cfg.activo = False
-    cfg.ultima_ejecucion = datetime.now().isoformat(timespec="seconds")
+    cfg.ultima_ejecucion = ahora_ar_naive().isoformat(timespec="seconds")
+    if ultimo_resultado is not None:
+        cfg.ultimo_resultado = ultimo_resultado
+    guardar_config(cfg)
+    return cfg
+
+
+def registrar_ejecucion_manual(
+    cfg: ConfigAnalisisProgramado,
+    *,
+    ultimo_resultado: dict[str, Any] | None = None,
+) -> ConfigAnalisisProgramado:
+    """Registra resultado sin desactivar la programación guardada."""
+    cfg.ultima_ejecucion = ahora_ar_naive().isoformat(timespec="seconds")
     if ultimo_resultado is not None:
         cfg.ultimo_resultado = ultimo_resultado
     guardar_config(cfg)
@@ -205,10 +220,35 @@ def _carpeta_ejecucion(base: str | Path) -> Path:
     return dest
 
 
+def _motivo_espera_ejecucion(cfg: ConfigAnalisisProgramado, ahora: datetime) -> str:
+    if not cfg.activo:
+        return "La programación está pausada; guardá de nuevo para activarla."
+    if not _config_completa(cfg):
+        return "Faltan sistemas, datos o carpeta de destino."
+    if ahora.weekday() != cfg.dia_semana:
+        hoy = DIAS_SEMANA[ahora.weekday()][1]
+        prog = DIAS_SEMANA[cfg.dia_semana][1]
+        return f"Hoy es {hoy}; programaste {prog}."
+    programado = ahora.replace(hour=cfg.hora, minute=cfg.minuto, second=0, microsecond=0)
+    if ahora < programado:
+        return (
+            f"Esperando las {cfg.hora:02d}:{cfg.minuto:02d} "
+            f"(ahora {ahora.strftime('%H:%M')} Argentina)."
+        )
+    if cfg.ultima_ejecucion:
+        try:
+            ult = datetime.fromisoformat(cfg.ultima_ejecucion)
+            if ult.date() == ahora.date():
+                return "Ya se ejecutó hoy."
+        except Exception:
+            pass
+    return ""
+
+
 def debe_ejecutar_ahora(cfg: ConfigAnalisisProgramado, ahora: datetime | None = None) -> bool:
     if not cfg.activo or not _config_completa(cfg):
         return False
-    ahora = ahora or datetime.now()
+    ahora = ahora or ahora_ar_naive()
     if ahora.weekday() != cfg.dia_semana:
         return False
     programado = ahora.replace(hour=cfg.hora, minute=cfg.minuto, second=0, microsecond=0)
@@ -228,6 +268,8 @@ def ejecutar_analisis_programado(
     cfg: ConfigAnalisisProgramado | None = None,
     *,
     on_log: Callable[[str], None] | None = None,
+    manual: bool = False,
+    _reservado: bool = False,
 ) -> dict[str, Any]:
     """Ejecuta los sistemas seleccionados. Devuelve resumen del resultado."""
     global _ejecutando
@@ -242,12 +284,14 @@ def ejecutar_analisis_programado(
     from cuit_en_arca.cancelacion import reset_cancelacion_ap, verificar_cancelacion
     from cuit_en_arca.errores import CancelacionUsuarioError
 
-    with _lock:
-        if _ejecutando:
-            return {"ok": False, "mensaje": "Ya hay una ejecución programada en curso."}
-        _ejecutando = True
+    if not _reservado:
+        with _lock:
+            if _ejecutando:
+                return {"ok": False, "mensaje": "Ya hay una ejecución programada en curso."}
+            _ejecutando = True
 
     cfg = cfg or cargar_config()
+    activo_previo = cfg.activo
     resultado: dict[str, Any] = {
         "ok": True,
         "mensaje": "",
@@ -297,6 +341,8 @@ def ejecutar_analisis_programado(
             entrega_ref[0] = entrega
             entrega.escanear()
         log(f"Inicio análisis programado → {base}")
+        if manual:
+            log("Ejecución manual (Ejecutar ahora).")
         marcar_paso_ap("preparacion", "ok")
 
         from cuit_en_arca.planilla_analisis_programado import (
@@ -334,7 +380,8 @@ def ejecutar_analisis_programado(
                     marcar_paso_ap("mis_comprobantes", "ok")
                 except CancelacionUsuarioError as exc:
                     marcar_cancelado_ap(str(exc))
-                    limpiar_cache_programacion(cfg)
+                    if not manual:
+                        limpiar_cache_programacion(cfg)
                     return resultado
                 except Exception as exc:
                     resultado["sistemas"]["mis_comprobantes"]["error"] = str(exc)
@@ -370,7 +417,8 @@ def ejecutar_analisis_programado(
                     marcar_paso_ap("dfe", "ok")
                 except CancelacionUsuarioError as exc:
                     marcar_cancelado_ap(str(exc))
-                    limpiar_cache_programacion(cfg)
+                    if not manual:
+                        limpiar_cache_programacion(cfg)
                     return resultado
                 except Exception as exc:
                     resultado["sistemas"]["dfe"]["error"] = str(exc)
@@ -406,7 +454,8 @@ def ejecutar_analisis_programado(
                     marcar_paso_ap("nuestra_parte", "ok")
                 except CancelacionUsuarioError as exc:
                     marcar_cancelado_ap(str(exc))
-                    limpiar_cache_programacion(cfg)
+                    if not manual:
+                        limpiar_cache_programacion(cfg)
                     return resultado
                 except Exception as exc:
                     resultado["sistemas"]["nuestra_parte"]["error"] = str(exc)
@@ -445,26 +494,30 @@ def ejecutar_analisis_programado(
             mensaje=resultado["mensaje"],
             fallos=resultado["fallos"],
         )
-        pausar_programacion_tras_ejecucion(
-            cfg,
-            ultimo_resultado={
-                "ok": resultado["ok"],
-                "mensaje": resultado["mensaje"],
-                "carpeta": resultado["carpeta"],
-            },
-        )
+        resumen = {
+            "ok": resultado["ok"],
+            "mensaje": resultado["mensaje"],
+            "carpeta": resultado["carpeta"],
+        }
+        if manual:
+            cfg.activo = activo_previo
+            registrar_ejecucion_manual(cfg, ultimo_resultado=resumen)
+        else:
+            pausar_programacion_tras_ejecucion(cfg, ultimo_resultado=resumen)
         return resultado
 
     except CancelacionUsuarioError as exc:
         marcar_cancelado_ap(str(exc))
-        limpiar_cache_programacion(cfg)
+        if not manual:
+            limpiar_cache_programacion(cfg)
         return resultado
     except Exception as exc:
         resultado["ok"] = False
         resultado["mensaje"] = str(exc)
         log(f"ERROR: {exc}")
         marcar_error_ap(str(exc))
-        limpiar_cache_programacion(cfg)
+        if not manual:
+            limpiar_cache_programacion(cfg)
         return resultado
     finally:
         with _lock:
@@ -479,7 +532,7 @@ def _segundos_espera_scheduler(cfg: ConfigAnalisisProgramado) -> float:
     """Cuánto esperar hasta el próximo chequeo (≈15 s tras la hora programada)."""
     if not cfg.activo or not _config_completa(cfg):
         return _INTERVALO_SCHEDULER_LEJOS
-    ahora = datetime.now()
+    ahora = ahora_ar_naive()
     if ahora.weekday() != cfg.dia_semana:
         return _INTERVALO_SCHEDULER_LEJOS
     if cfg.ultima_ejecucion:
@@ -499,6 +552,33 @@ def _segundos_espera_scheduler(cfg: ConfigAnalisisProgramado) -> float:
     return _INTERVALO_SCHEDULER_LEJOS
 
 
+def lanzar_ejecucion_ap(
+    cfg: ConfigAnalisisProgramado,
+    *,
+    manual: bool = False,
+) -> tuple[bool, str]:
+    """Ejecuta en un hilo de fondo. Devuelve (ok, mensaje_error)."""
+    global _ejecutando
+
+    with _lock:
+        if _ejecutando:
+            return False, "Ya hay una ejecución en curso."
+        _ejecutando = True
+
+    def _worker() -> None:
+        try:
+            ejecutar_analisis_programado(cfg, manual=manual, _reservado=True)
+        except Exception:
+            _LOG.exception("Error en ejecución de análisis programado")
+
+    threading.Thread(
+        target=_worker,
+        daemon=True,
+        name="ap-ejecucion-manual" if manual else "ap-ejecucion",
+    ).start()
+    return True, ""
+
+
 def _loop_scheduler() -> None:
     while True:
         cfg: ConfigAnalisisProgramado | None = None
@@ -511,7 +591,7 @@ def _loop_scheduler() -> None:
                     cfg.hora,
                     cfg.minuto,
                 )
-                ejecutar_analisis_programado(cfg)
+                lanzar_ejecucion_ap(cfg, manual=False)
         except Exception:
             _LOG.exception("Error en el scheduler de análisis programado")
         try:
@@ -524,14 +604,19 @@ def _loop_scheduler() -> None:
 def scheduler_estado(cfg: ConfigAnalisisProgramado | None = None) -> dict[str, Any]:
     """Diagnóstico del scheduler (útil en web)."""
     cfg = cfg or cargar_config()
-    ahora = datetime.now()
+    ahora = ahora_ar_naive()
     dia_nombre = DIAS_SEMANA[cfg.dia_semana][1] if 0 <= cfg.dia_semana <= 6 else "?"
+    debe = debe_ejecutar_ahora(cfg, ahora)
+    motivo = "" if debe else _motivo_espera_ejecucion(cfg, ahora)
     return {
         "hilo_iniciado": _scheduler_iniciado,
         "config_activa": cfg.activo,
         "config_completa": _config_completa(cfg),
-        "debe_ejecutar_ahora": debe_ejecutar_ahora(cfg, ahora),
-        "ahora_servidor": ahora.isoformat(timespec="seconds"),
+        "debe_ejecutar_ahora": debe,
+        "motivo_espera": motivo,
+        "zona_horaria": "America/Argentina/Buenos_Aires",
+        "ahora_servidor": fecha_hora_ar_texto(),
+        "dia_hoy": DIAS_SEMANA[ahora.weekday()][1],
         "programado": f"{dia_nombre} {cfg.hora:02d}:{cfg.minuto:02d}",
         "ultima_ejecucion": cfg.ultima_ejecucion,
     }

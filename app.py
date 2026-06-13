@@ -1441,6 +1441,68 @@ def _filas_ap_a_dict(filas) -> list[dict]:
     return [asdict(f) for f in filas]
 
 
+def _cfg_ap_desde_peticion(lg: str, *, solo_ejecucion: bool = False):
+    """Arma la config desde el formulario. Devuelve (cfg, err_msg)."""
+    from cuit_en_arca.analisis_programado import ConfigAnalisisProgramado, cargar_config
+
+    sistemas = [
+        s
+        for s in request.form.getlist("ap_sistemas")
+        if s in ("mis_comprobantes", "dfe", "nuestra_parte")
+    ]
+    if not sistemas:
+        return None, tr(lg, "ap_err_sin_sistema")
+
+    carpeta = (request.form.get("carpeta_destino") or "").strip()
+    if _es_app_escritorio() and not carpeta:
+        return None, tr(lg, "ap_err_sin_carpeta")
+    if not _es_app_escritorio():
+        from cuit_en_arca.entrega_web import carpeta_ap_servidor
+
+        carpeta = str(carpeta_ap_servidor())
+
+    filas, _errores, err_msg = _filas_ap_desde_peticion(lg)
+    if err_msg:
+        return None, err_msg
+
+    filas_dict = _filas_ap_a_dict(filas)
+
+    if solo_ejecucion:
+        prev = cargar_config()
+        cfg = ConfigAnalisisProgramado(
+            activo=prev.activo,
+            dia_semana=prev.dia_semana,
+            hora=prev.hora,
+            minuto=prev.minuto,
+            sistemas=sistemas,
+            carpeta_destino=carpeta,
+            filas=filas_dict,
+            ultima_ejecucion=prev.ultima_ejecucion,
+            ultimo_resultado=prev.ultimo_resultado,
+        )
+        return cfg, None
+
+    try:
+        dia = int(request.form.get("ap_dia_semana", "0"))
+        hora = int(request.form.get("ap_hora", "9"))
+        minuto = int(request.form.get("ap_minuto", "0"))
+    except ValueError:
+        dia, hora, minuto = 0, 9, 0
+
+    cfg = ConfigAnalisisProgramado(
+        activo=True,
+        dia_semana=max(0, min(6, dia)),
+        hora=max(0, min(23, hora)),
+        minuto=max(0, min(59, minuto)),
+        sistemas=sistemas,
+        carpeta_destino=carpeta,
+        filas=filas_dict,
+        ultima_ejecucion=None,
+        ultimo_resultado=None,
+    )
+    return cfg, None
+
+
 @app.get("/analisis-programado")
 def analisis_programado():
     from cuit_en_arca.analisis_programado import cargar_config
@@ -1486,46 +1548,12 @@ def analisis_programado_ejecucion():
 
 @app.post("/analisis-programado/guardar")
 def analisis_programado_guardar():
-    from cuit_en_arca.analisis_programado import (
-        ConfigAnalisisProgramado,
-        cargar_config,
-        guardar_config,
-    )
+    from cuit_en_arca.analisis_programado import cargar_config, guardar_config
 
     lg = normalize_lang(session.get("lang"))
     es_fetch = request.headers.get("X-Requested-With") == "fetch"
 
-    sistemas = [
-        s
-        for s in request.form.getlist("ap_sistemas")
-        if s in ("mis_comprobantes", "dfe", "nuestra_parte")
-    ]
-    if not sistemas:
-        msg = tr(lg, "ap_err_sin_sistema")
-        if es_fetch:
-            return jsonify({"error": msg}), 400
-        return render_template(
-            "analisis_programado.html",
-            error=msg,
-            config=cargar_config().a_dict_publico(),
-        )
-
-    carpeta = (request.form.get("carpeta_destino") or "").strip()
-    if _es_app_escritorio() and not carpeta:
-        msg = tr(lg, "ap_err_sin_carpeta")
-        if es_fetch:
-            return jsonify({"error": msg}), 400
-        return render_template(
-            "analisis_programado.html",
-            error=msg,
-            config=cargar_config().a_dict_publico(),
-        )
-    if not _es_app_escritorio():
-        from cuit_en_arca.entrega_web import carpeta_ap_servidor
-
-        carpeta = str(carpeta_ap_servidor())
-
-    filas, _errores, err_msg = _filas_ap_desde_peticion(lg)
+    cfg, err_msg = _cfg_ap_desde_peticion(lg)
     if err_msg:
         if es_fetch:
             return jsonify({"error": err_msg}), 400
@@ -1535,24 +1563,6 @@ def analisis_programado_guardar():
             config=cargar_config().a_dict_publico(),
         )
 
-    try:
-        dia = int(request.form.get("ap_dia_semana", "0"))
-        hora = int(request.form.get("ap_hora", "9"))
-        minuto = int(request.form.get("ap_minuto", "0"))
-    except ValueError:
-        dia, hora, minuto = 0, 9, 0
-
-    cfg = ConfigAnalisisProgramado(
-        activo=True,
-        dia_semana=max(0, min(6, dia)),
-        hora=max(0, min(23, hora)),
-        minuto=max(0, min(59, minuto)),
-        sistemas=sistemas,
-        carpeta_destino=carpeta,
-        filas=_filas_ap_a_dict(filas),
-        ultima_ejecucion=None,
-        ultimo_resultado=None,
-    )
     try:
         guardar_config(cfg)
     except OSError as exc:
@@ -1571,6 +1581,44 @@ def analisis_programado_guardar():
         "analisis_programado.html",
         ok=tr(lg, "ap_ok_guardado"),
         config=cfg.a_dict_publico(),
+    )
+
+
+@app.post("/analisis-programado/ejecutar-ahora")
+def analisis_programado_ejecutar_ahora():
+    from cuit_en_arca.analisis_programado import cargar_config, lanzar_ejecucion_ap
+
+    lg = normalize_lang(session.get("lang"))
+    es_fetch = request.headers.get("X-Requested-With") == "fetch"
+
+    cfg, err_msg = _cfg_ap_desde_peticion(lg, solo_ejecucion=True)
+    if err_msg:
+        if es_fetch:
+            return jsonify({"error": err_msg}), 400
+        return render_template(
+            "analisis_programado.html",
+            error=err_msg,
+            config=cargar_config().a_dict_publico(),
+        )
+
+    ok, msg = lanzar_ejecucion_ap(cfg, manual=True)
+    if not ok:
+        err = tr(lg, "ap_err_en_curso")
+        if es_fetch:
+            return jsonify({"error": err}), 409
+        return render_template(
+            "analisis_programado.html",
+            error=err,
+            config=cargar_config().a_dict_publico(),
+        )
+
+    payload = {"ok": True, "mensaje": tr(lg, "ap_ejecutar_iniciado")}
+    if es_fetch:
+        return jsonify(payload)
+    return render_template(
+        "analisis_programado.html",
+        ok=payload["mensaje"],
+        config=cargar_config().a_dict_publico(),
     )
 
 

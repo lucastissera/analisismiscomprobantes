@@ -220,6 +220,9 @@
           <button type="button" class="btn-peligro" id="btn-limpiar-datos">{{ t('btn_limpiar_datos') }}</button>
           <button type="button" class="btn-peligro" id="btn-limpiar">{{ t('ap_limpiar') }}</button>
         </div>
+        <div class="btn-row" style="margin-top:0.5rem">
+          <button type="button" class="btn-sec" id="btn-ejecutar-ahora">{{ t('ap_ejecutar_ahora') }}</button>
+        </div>
       </form>
 
       <div class="progreso panel" id="progreso-ap">
@@ -256,6 +259,8 @@
         sinSistema: {{ t('ap_err_sin_sistema')|tojson }},
         sinDatos: {{ t('ap_err_sin_datos')|tojson }},
         okGuardado: {{ t('ap_ok_guardado')|tojson }},
+        ejecutarIniciado: {{ t('ap_ejecutar_iniciado')|tojson }},
+        errEnCurso: {{ t('ap_err_en_curso')|tojson }},
         estadoInactivo: {{ t('ap_estado_inactivo')|tojson }},
         estadoActivo: {{ t('ap_estado_activo')|tojson }},
         estadoPausado: {{ t('ap_estado_pausado')|tojson }},
@@ -318,8 +323,12 @@
               "<p>" +
               (I18N.schedulerReloj || "Reloj: {ahora} · {prog}")
                 .replace("{ahora}", sch.ahora_servidor || "")
-                .replace("{prog}", sch.programado || "") +
+                .replace("{prog}", sch.programado || "")
+                .replace("{hoy}", sch.dia_hoy || "") +
               "</p>";
+            if (sch.motivo_espera) {
+              html += "<p>" + sch.motivo_espera + "</p>";
+            }
             if (sch.debe_ejecutar_ahora) {
               html += "<p><strong>" + (I18N.schedulerDisparo || "") + "</strong></p>";
             }
@@ -428,21 +437,25 @@
           }
           return false;
         }
-
-        form.addEventListener("submit", function (ev) {
-          ev.preventDefault();
+        function validarFormulario() {
           sincronizarHoraOculta();
           errBox.style.display = "none";
           if (!haySistema()) {
             errBox.textContent = I18N.sinSistema;
             errBox.style.display = "block";
-            return;
+            return false;
           }
           if (!hayDatos()) {
             errBox.textContent = I18N.sinDatos;
             errBox.style.display = "block";
-            return;
+            return false;
           }
+          return true;
+        }
+
+        form.addEventListener("submit", function (ev) {
+          ev.preventDefault();
+          if (!validarFormulario()) return;
           btn.disabled = true;
           McElegirCarpeta.resolver({
             api: carpetaApi,
@@ -480,6 +493,49 @@
               errBox.style.display = "block";
             });
         });
+
+        var btnEjecutar = document.getElementById("btn-ejecutar-ahora");
+        if (btnEjecutar) {
+          btnEjecutar.addEventListener("click", function () {
+            if (!validarFormulario()) return;
+            btnEjecutar.disabled = true;
+            var prog = document.getElementById("progreso-ap");
+            if (prog) prog.style.display = "block";
+            McElegirCarpeta.resolver({
+              api: carpetaApi,
+              sistema: "analisis_programado",
+            })
+              .then(function (ruta) {
+                if (McElegirCarpeta.requiereCarpeta(ruta)) {
+                  btnEjecutar.disabled = false;
+                  errBox.textContent = I18N.carpetaCancelada;
+                  errBox.style.display = "block";
+                  return;
+                }
+                carpetaApi.aplicar(ruta);
+                var fd = new FormData(form);
+                return McElegirCarpeta.postForm("{{ url_for('analisis_programado_ejecutar_ahora') }}", fd);
+              })
+              .then(function (payload) {
+                if (!payload) {
+                  btnEjecutar.disabled = false;
+                  return;
+                }
+                if (!payload.ok || payload.data.error) {
+                  btnEjecutar.disabled = false;
+                  errBox.textContent = payload.data.error || I18N.errEnCurso;
+                  errBox.style.display = "block";
+                  return;
+                }
+                McCancelarDescarga.registrar("ap", null);
+              })
+              .catch(function (err) {
+                btnEjecutar.disabled = false;
+                errBox.textContent = (err && err.message) || I18N.errorGuardar || I18N.carpetaCancelada;
+                errBox.style.display = "block";
+              });
+          });
+        }
       })();
 
       (function limpiarAp() {
@@ -635,12 +691,16 @@
               htmlFallos(st.fallos, st.carpeta);
             McCancelarDescarga.limpiar();
             refrescarEstadoProgramacion();
+            var btnEj = document.getElementById("btn-ejecutar-ahora");
+            if (btnEj) btnEj.disabled = false;
           } else if (st.estado === "error" || st.estado === "cancelado") {
             errProg.style.display = "block";
             errProg.textContent = st.error || st.mensaje || "Error";
             okBox.style.display = "none";
             McCancelarDescarga.limpiar();
             refrescarEstadoProgramacion();
+            var btnEjErr = document.getElementById("btn-ejecutar-ahora");
+            if (btnEjErr) btnEjErr.disabled = false;
           } else if (st.estado === "en_progreso") {
             McCancelarDescarga.registrar("ap", null);
           } else {

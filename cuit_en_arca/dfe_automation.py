@@ -114,17 +114,12 @@ def carpeta_dfe_escritorio(
     nombre_sesion: str | None = None,
 ) -> Path:
     """Carpeta ``DFE yyyy-mm-dd HH-MM``."""
-    from cuit_en_arca.carpetas_salida import stamp_carpeta_ejecucion
+    from cuit_en_arca.carpetas_salida import momento_carpeta_ar, stamp_carpeta_ejecucion
 
     if nombre_sesion:
         nombre = nombre_sesion
     else:
-        momento = (
-            datetime.now()
-            if hoy is None
-            else datetime.combine(hoy, datetime.now().time())
-        )
-        nombre = f"DFE {stamp_carpeta_ejecucion(momento)}"
+        nombre = f"DFE {stamp_carpeta_ejecucion(momento_carpeta_ar(hoy))}"
     if base_elegida:
         destino = Path(base_elegida) / nombre
         destino.mkdir(parents=True, exist_ok=True)

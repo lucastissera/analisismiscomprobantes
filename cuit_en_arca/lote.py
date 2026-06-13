@@ -56,17 +56,12 @@ def _carpeta_mis_comprobantes(
     nombre_sesion: str | None = None,
 ) -> Path:
     """Carpeta ``Mis Comprobantes yyyy-mm-dd HH-MM`` dentro de ``base``."""
-    from cuit_en_arca.carpetas_salida import stamp_carpeta_ejecucion
+    from cuit_en_arca.carpetas_salida import momento_carpeta_ar, stamp_carpeta_ejecucion
 
     if nombre_sesion:
         destino = Path(base) / nombre_sesion
     else:
-        momento = (
-            datetime.now()
-            if hoy is None
-            else datetime.combine(hoy, datetime.now().time())
-        )
-        destino = Path(base) / f"Mis Comprobantes {stamp_carpeta_ejecucion(momento)}"
+        destino = Path(base) / f"Mis Comprobantes {stamp_carpeta_ejecucion(momento_carpeta_ar(hoy))}"
     destino.mkdir(parents=True, exist_ok=True)
     return destino
 

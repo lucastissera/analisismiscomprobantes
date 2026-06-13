@@ -557,12 +557,12 @@ def carpeta_np_base(
     nombre_sesion: str | None = None,
 ) -> Path:
     from cuit_en_arca.dfe_automation import _escritorio_windows
-    from cuit_en_arca.carpetas_salida import stamp_carpeta_ejecucion
+    from cuit_en_arca.carpetas_salida import momento_carpeta_ar, stamp_carpeta_ejecucion
 
     if nombre_sesion:
         nombre = nombre_sesion
     else:
-        nombre = f"Nuestra Parte {stamp_carpeta_ejecucion(datetime.combine(hoy, datetime.now().time()) if hoy else None)}"
+        nombre = f"Nuestra Parte {stamp_carpeta_ejecucion(momento_carpeta_ar(hoy))}"
     if base_elegida:
         destino = Path(base_elegida) / nombre
         destino.mkdir(parents=True, exist_ok=True)
