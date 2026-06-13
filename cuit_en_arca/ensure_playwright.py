@@ -52,13 +52,6 @@ def asegurar_chromium_playwright(*, forzar: bool = False) -> None:
             f"Ejecute: PLAYWRIGHT_BROWSERS_PATH={destino} playwright install chromium"
         )
 
-    if sys.platform == "linux":
-        subprocess.run(
-            [sys.executable, "-m", "playwright", "install-deps", "chromium"],
-            env=env,
-            check=False,
-        )
-
     if not _chromium_instalado(destino):
         raise RuntimeError(
             f"Chromium no quedó instalado en {destino}. "

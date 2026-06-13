@@ -6,8 +6,7 @@ services:
     buildCommand: >-
       pip install -r requirements.txt &&
       export PLAYWRIGHT_BROWSERS_PATH=/opt/render/project/src/.playwright-browsers &&
-      python -m playwright install chromium &&
-      python -m playwright install-deps chromium
+      python -m playwright install chromium
     startCommand: >-
       export PLAYWRIGHT_BROWSERS_PATH=/opt/render/project/src/.playwright-browsers &&
       python -c "from cuit_en_arca.ensure_playwright import asegurar_chromium_playwright; asegurar_chromium_playwright()" &&

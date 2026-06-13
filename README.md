@@ -176,7 +176,7 @@ Marcá cada ítem al publicar una versión nueva. El orden sugiere: código list
 4. Elegir el repo `analisismiscomprobantes`.
 5. Completar:
    - **Environment**: `Python 3`
-   - **Build Command**: `pip install -r requirements.txt && playwright install chromium && playwright install-deps chromium`
+   - **Build Command**: `pip install -r requirements.txt && playwright install chromium`
    - **Start Command**: `gunicorn app:app`
 6. Crear el servicio y esperar el deploy.
 7. Render te va a dar una URL pública (`https://...onrender.com`) para compartir.
