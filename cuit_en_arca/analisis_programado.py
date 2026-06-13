@@ -273,8 +273,9 @@ def ejecutar_analisis_programado(
             filas_mis_comprobantes,
             filas_nuestra_parte,
         )
+        from cuit_en_arca.service import _headless_desde_env
 
-        headless = False  # visible: seguir el proceso en pantalla
+        headless = _headless_desde_env()
 
         if "mis_comprobantes" in cfg.sistemas:
             verificar_cancelacion(ap=True)

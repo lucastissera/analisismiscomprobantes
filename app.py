@@ -1110,9 +1110,9 @@ def dfe_descargar():
         return render_template("dfe.html", error=err_msg)
 
     from cuit_en_arca.dfe_automation import ejecutar_dfe_lote
+    from cuit_en_arca.service import _headless_desde_env
 
-    # DFE siempre visible para que el usuario siga el proceso en pantalla.
-    headless = False
+    headless = _headless_desde_env()
 
     carpeta_form = (request.form.get("carpeta_destino") or "").strip() or None
 
@@ -1272,13 +1272,9 @@ def np_descargar():
         return render_template("nuestra_parte.html", error=err_msg)
 
     from cuit_en_arca.nuestra_parte_automation import ejecutar_nuestra_parte_lote
+    from cuit_en_arca.service import _headless_desde_env
 
-    headless = os.environ.get("NP_HEADLESS", "0").strip().lower() in (
-        "1",
-        "true",
-        "yes",
-        "on",
-    )
+    headless = _headless_desde_env()
     carpeta_form = (request.form.get("carpeta_destino") or "").strip() or None
 
     job_id = uuid4().hex

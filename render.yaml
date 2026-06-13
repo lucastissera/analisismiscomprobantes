@@ -16,6 +16,8 @@ services:
         value: "1"
       - key: CUIT_EN_ARCA_UI
         value: "1"
+      - key: CUIT_EN_ARCA_HEADLESS
+        value: "1"
       - key: PLAYWRIGHT_BROWSERS_PATH
         value: /opt/render/project/src/.playwright-browsers
       - key: PYTHON_VERSION

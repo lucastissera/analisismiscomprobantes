@@ -89,6 +89,14 @@ def _requiere_playwright() -> None:
 
 
 def _headless_desde_env() -> bool:
+    """Servidor web: headless por defecto (sin pantalla). Portable: visible salvo env."""
+    if getattr(sys, "frozen", False):
+        return os.environ.get("CUIT_EN_ARCA_HEADLESS", "0").strip().lower() in (
+            "1",
+            "true",
+            "yes",
+            "on",
+        )
     return os.environ.get("CUIT_EN_ARCA_HEADLESS", "1").strip().lower() not in (
         "0",
         "false",

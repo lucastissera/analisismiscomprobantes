@@ -16,7 +16,8 @@ Flujo:
    PDF de la pantalla y entra a cada «Ver detalles» (ícono de ojo) para exportar.
 6. Guarda todo en «Nuestra Parte yyyy-mm-dd / <cuit> / <sección>».
 
-Pensado para ejecutarse en modo visible (headless=False) en la PC del usuario.
+En servidor web usa navegador headless; en el portable (.exe), visible por defecto
+(``CUIT_EN_ARCA_HEADLESS=1`` fuerza headless también en el .exe).
 """
 
 from __future__ import annotations
@@ -35,6 +36,7 @@ from cuit_en_arca.errores import (
     AutomatizacionNoDisponibleError,
     CuitRepresentadoNoEncontradoError,
 )
+from cuit_en_arca.service import _headless_desde_env
 from cuit_en_arca.stealth import clic_humano, escribir_como_humano, pausa_humana
 
 NP_TERMINO_BUSQUEDA = "Nuestra Parte"
@@ -1527,11 +1529,12 @@ def ejecutar_descarga_nuestra_parte(
     ejercicio: str,
     *,
     carpeta_destino: Path,
-    headless: bool = False,
+    headless: bool | None = None,
     on_log: Callable[[str], None] | None = None,
     on_paso: Callable[[str, str], None] | None = None,
 ) -> ResultadoNPCuit:
     """Descarga las 4 secciones de «Nuestra Parte» para un CUIT."""
+    headless = _headless_desde_env() if headless is None else headless
     if not _playwright_disponible():
         raise AutomatizacionNoDisponibleError(
             "Playwright no está instalado. En local: pip install playwright && playwright install chromium"
@@ -1615,7 +1618,7 @@ def ejecutar_descarga_nuestra_parte(
 def ejecutar_nuestra_parte_lote(
     filas,
     *,
-    headless: bool = False,
+    headless: bool | None = None,
     on_log: Callable[[str], None] | None = None,
     on_paso: Callable[[str, str], None] | None = None,
     on_reiniciar_pasos: Callable[[], None] | None = None,
@@ -1627,6 +1630,7 @@ def ejecutar_nuestra_parte_lote(
     nombre_carpeta_sesion: str | None = None,
 ) -> Path:
     """Procesa varias filas (CUIT) de «Nuestra Parte». Tolerante a errores."""
+    headless = _headless_desde_env() if headless is None else headless
     base = carpeta_np_base(
         base_elegida=carpeta_base,
         nombre_sesion=nombre_carpeta_sesion,

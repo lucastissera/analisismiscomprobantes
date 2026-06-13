@@ -13,7 +13,8 @@ Flujo:
    - Si es solo informativa en pantalla, **imprime la pantalla a PDF**.
 7. Guarda todo en una carpeta del escritorio: ``DFE yyyy-mm-dd``.
 
-Pensado para ejecutarse en modo **visible** (headless=False) en la PC del usuario.
+En servidor web usa navegador headless; en el portable (.exe), visible por defecto
+(``CUIT_EN_ARCA_HEADLESS=1`` fuerza headless también en el .exe).
 """
 
 from __future__ import annotations
@@ -33,6 +34,7 @@ from cuit_en_arca.errores import (
     CuitRepresentadoNoEncontradoError,
     LoginArcaError,
 )
+from cuit_en_arca.service import _headless_desde_env
 from cuit_en_arca.stealth import clic_humano, escribir_como_humano, pausa_humana
 
 _DFE_ESPERA_TABLA_MS = 10_000
@@ -919,11 +921,12 @@ def ejecutar_descarga_dfe(
     fecha_hasta: date | None,
     *,
     carpeta_destino: Path,
-    headless: bool = False,
+    headless: bool | None = None,
     on_log: Callable[[str], None] | None = None,
     on_paso: Callable[[str, str], None] | None = None,
 ) -> ResultadoDfeCuit:
     """Descarga las comunicaciones del DFE de un CUIT a ``carpeta_destino``."""
+    headless = _headless_desde_env() if headless is None else headless
     if not _playwright_disponible():
         raise AutomatizacionNoDisponibleError(
             "Playwright no está instalado. En local: pip install playwright && playwright install chromium"
@@ -1091,7 +1094,7 @@ def ruta_plantilla_dfe_excel() -> Path:
 def ejecutar_dfe_lote(
     filas,
     *,
-    headless: bool = False,
+    headless: bool | None = None,
     on_log: Callable[[str], None] | None = None,
     on_paso: Callable[[str, str], None] | None = None,
     on_reiniciar_pasos: Callable[[], None] | None = None,
@@ -1107,6 +1110,7 @@ def ejecutar_dfe_lote(
     Si ``carpeta_base`` se indica, la carpeta ``DFE yyyy-mm-dd`` se crea allí;
     si no, en el escritorio. Tolerante: un CUIT con error no frena el resto.
     """
+    headless = _headless_desde_env() if headless is None else headless
     base = carpeta_dfe_escritorio(
         base_elegida=carpeta_base,
         nombre_sesion=nombre_carpeta_sesion,
