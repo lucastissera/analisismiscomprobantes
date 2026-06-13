@@ -1,12 +1,14 @@
 # Instrucciones para agentes (Cursor / IA)
 
-## Build portable obligatorio tras cambios de código
+## Build portable (solo cuando lo pida el usuario)
 
-Cada vez que modifiques archivos de la aplicación (`app.py`, `sumar_imp_total.py`, `templates/`, `cuit_en_arca/`, `i18n.py`, etc.), **debés actualizar el ejecutable** en:
+El ejecutable vive en:
 
 `dist/AnalisisIntegralContribuyente/AnalisisIntegralContribuyente.exe`
 
-### Comando (siempre al finalizar una tarea con cambios)
+**No lo recompiles automáticamente** al terminar cambios de código. Compilá **solo** si el usuario lo pide explícitamente.
+
+### Comando
 
 Desde la raíz del proyecto:
 
@@ -14,32 +16,25 @@ Desde la raíz del proyecto:
 python tools/portable_build.py
 ```
 
-O en Windows, doble clic / consola:
+O en Windows:
 
 ```bat
 build_windows.bat
 ```
 
-### Vigilancia automática (recomendado en desarrollo)
+### Vigilancia automática (opcional, manual del usuario)
 
-Dejá abierto en una terminal (recompila ~3,5 s después del último guardado):
+Si el usuario quiere rebuilds mientras edita, puede dejar abierto en una terminal (recompila ~3,5 s después del último guardado):
 
 ```bat
 watch_portable.bat
 ```
 
-### Hook de Cursor (automático)
+Eso es independiente del agente: no lo arranques vos salvo que te lo pidan.
 
-El proyecto incluye `.cursor/hooks.json`:
+### Hooks de Cursor
 
-- **`afterFileEdit`**: tras guardar cambios relevantes (`.py`, `templates/`, etc.), programa un rebuild con debounce (~3,5 s) vía `tools/hook_schedule_build.py`.
-- **`stop`**: al terminar el agente, lanza un rebuild inmediato.
-
-Log del hook: `build/hook-rebuild.log`. Si el `.exe` está en ejecución, cerralo antes del build para evitar archivos bloqueados.
-
-### Regla del agente (por defecto)
-
-`.cursor/rules/rebuild-portable.mdc` (`alwaysApply: true`) obliga a recompilar el portable **siempre** al terminar cualquier tarea con cambios de código, **sin que el usuario lo pida**. Es el comportamiento por defecto del proyecto.
+Los hooks de rebuild automático (`afterFileEdit` / `stop`) están **desactivados** en `.cursor/hooks.json`. La regla `.cursor/rules/rebuild-portable.mdc` también indica compilar solo a pedido.
 
 ### Qué no versionar
 

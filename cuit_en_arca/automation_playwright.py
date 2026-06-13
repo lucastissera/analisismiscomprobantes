@@ -922,6 +922,7 @@ def _login_clave_fiscal(page, clave: str, cuit: str) -> None:
             page.keyboard.press("Enter")
     _esperar_pagina(page, timeout=63_000)
     _detectar_fallo_login(page, cuit)
+    _esperar_post_login(page, timeout_sec=35)
 
 
 def _abrir_mis_comprobantes(page):

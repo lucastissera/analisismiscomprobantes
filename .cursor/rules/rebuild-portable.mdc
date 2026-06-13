@@ -1,11 +1,11 @@
 ---
-description: Recompilar el portable al terminar todas las acciones de la tarea
-alwaysApply: true
+description: Recompilar el portable solo cuando el usuario lo pida
+alwaysApply: false
 ---
 
-# Build portable al cerrar la tarea
+# Build portable (solo a pedido)
 
-Al **terminar todas las acciones** de una tarea (implementación, fixes, refactors), **recompilá siempre** el ejecutable portable si hubo cambios en código de la aplicación. No esperes a que el usuario lo pida.
+**No recompiles** el portable al terminar una tarea salvo que el usuario lo pida explícitamente (p. ej. «compilá», «actualizá el .exe», «build portable»).
 
 ## Comando
 
@@ -15,26 +15,24 @@ Desde la raíz del proyecto:
 python tools/portable_build.py
 ```
 
-## Flujo obligatorio
+O:
 
-1. Completá todos los cambios de código y verificaciones (sintaxis, lints si aplica).
-2. **Al final**, antes de dar la respuesta al usuario, ejecutá el build portable.
-3. Informá en la respuesta si compiló OK o si falló (y por qué).
+```bat
+build_windows.bat
+```
 
 ## Cuándo compilar
 
-- Cambios en: `app.py`, `run_desktop.py`, `cuit_en_arca/`, `templates/`, `static/`, `i18n.py`, `MisComprobantesDesktop.spec`, `sumar_imp_total.py`, `plantillas_imputacion.py`, etc.
-- Aunque el usuario no mencione el build en su mensaje.
+- Solo cuando el usuario lo solicite en el chat.
 
 ## Cuándo NO compilar
 
-- Solo documentación sin cambios funcionales.
-- Solo operaciones git sin tocar código de la app.
+- Al cerrar una tarea con cambios de código, si el usuario no pidió el build.
+- Solo documentación o git sin cambios funcionales.
 
 ## Si falla el build
 
 - Si el `.exe` está en uso: pedí cerrar `AnalisisIntegralContribuyente.exe` y reintentá.
-- Podés lanzar el build en segundo plano mientras informás cambios; confirmá el resultado al terminar.
 
 ## Salida esperada
 

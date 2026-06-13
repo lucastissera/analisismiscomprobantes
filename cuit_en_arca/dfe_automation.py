@@ -22,6 +22,7 @@ from __future__ import annotations
 import io
 import re
 import sys
+import time
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from pathlib import Path
@@ -38,7 +39,9 @@ from cuit_en_arca.service import _headless_desde_env
 from cuit_en_arca.stealth import clic_humano, escribir_como_humano, pausa_humana
 
 _DFE_ESPERA_TABLA_MS = 10_000
+_DFE_ESPERA_VENTANILLA_MS = 12_000
 VE_TERMINO_BUSQUEDA = "Domicilio Fiscal Electrónico"
+_DFE_HOST_MARKERS = ("ve.cloud", "domiciliofiscal", "domicilio fiscal")
 
 
 @dataclass
@@ -183,65 +186,222 @@ def _png_a_pdf(png_bytes: bytes, ruta: Path) -> None:
 # --------------------------------------------------------------------------- #
 # Apertura del servicio DFE desde el portal
 # --------------------------------------------------------------------------- #
+def _cantidad(loc, tope: int | None = None) -> int:
+    try:
+        n = loc.count()
+    except Exception:
+        return 0
+    if tope is not None:
+        return min(n, tope)
+    return n
+
+
+def _url_es_dfe(url: str | None) -> bool:
+    u = (url or "").lower()
+    return any(m in u for m in _DFE_HOST_MARKERS)
+
+
+def _pagina_dfe_context(context) -> object | None:
+    for pg in context.pages:
+        try:
+            if pg.is_closed():
+                continue
+        except Exception:
+            continue
+        if _url_es_dfe(pg.url):
+            return pg
+    return None
+
+
+def _esperar_ve_dfe(ve, timeout_ms: int | None = None) -> None:
+    """Espera DOM tras navegar (sin networkidle; AFIP casi nunca llega a idle)."""
+    limite = timeout_ms or _DFE_ESPERA_VENTANILLA_MS
+    try:
+        ve.wait_for_load_state("domcontentloaded", timeout=limite)
+    except Exception:
+        pass
+
+
+def _esperar_apertura_dfe(context, *, timeout_sec: float = 40) -> object | None:
+    limite = time.time() + timeout_sec
+    while time.time() < limite:
+        ve = _pagina_dfe_context(context)
+        if ve is not None:
+            return ve
+        pausa_humana(0.45, 0.85)
+    return None
+
+
+def _activar_busqueda_portal(page, ctx_buscador) -> None:
+    btn_clicado = False
+    for ctx in (ctx_buscador, page):
+        try:
+            btn = ctx.locator(
+                "button[type='submit'], button .fa-search, .btn-search, "
+                "[class*='search'] button, button[aria-label*='buscar' i]"
+            ).first
+            if btn.count() and btn.is_visible(timeout=800):
+                clic_humano(btn)
+                btn_clicado = True
+                break
+        except Exception:
+            pass
+        try:
+            btn = ctx.get_by_role("button", name=re.compile(r"buscar|search", re.I)).first
+            if btn.count() and btn.is_visible(timeout=800):
+                clic_humano(btn)
+                btn_clicado = True
+                break
+        except Exception:
+            pass
+    if not btn_clicado:
+        page.keyboard.press("Enter")
+
+
+def _locator_enlace_dfe(root):
+    candidatos = (
+        root.get_by_text(re.compile(r"Domicilio Fiscal Electr", re.I)),
+        root.locator("a.accesoPrincipal[title*='Domicilio' i]"),
+        root.locator("a[title*='Domicilio Fiscal' i]"),
+        root.get_by_role("link", name=re.compile(r"Domicilio Fiscal Electr", re.I)),
+    )
+    for loc in candidatos:
+        for i in range(_cantidad(loc, 12)):
+            try:
+                item = loc.nth(i)
+                if item.is_visible(timeout=900):
+                    return item
+            except Exception:
+                continue
+    return None
+
+
+def _esperar_enlace_dfe(page, intentos: int = 10):
+    from cuit_en_arca.automation_playwright import _iter_contextos
+
+    for _ in range(intentos):
+        for ctx in _iter_contextos(page):
+            link = _locator_enlace_dfe(ctx)
+            if link is not None:
+                return link
+        pausa_humana(0.35, 0.7)
+    return None
+
+
+def _buscar_dfe_en_portal(page):
+    from cuit_en_arca.automation_playwright import (
+        _click_servicio_y_obtener_pagina,
+        _esperar_pagina,
+        _iter_contextos,
+        _locator_buscador_servicios,
+    )
+
+    buscador = None
+    ctx_buscador = page
+    for ctx in _iter_contextos(page):
+        buscador = _locator_buscador_servicios(ctx)
+        if buscador is not None:
+            ctx_buscador = ctx
+            break
+    if buscador is None:
+        raise AutomatizacionArcaError(
+            "No se encontró la barra de búsqueda de servicios en ARCA."
+        )
+
+    escribir_como_humano(buscador, VE_TERMINO_BUSQUEDA)
+    pausa_humana(0.5, 1.0)
+    _activar_busqueda_portal(page, ctx_buscador)
+    pausa_humana(0.7, 1.3)
+    _esperar_pagina(page, timeout=35_000)
+
+    link = _esperar_enlace_dfe(page)
+    if link is None:
+        raise AutomatizacionArcaError(
+            "No apareció «Domicilio Fiscal Electrónico» en los resultados del buscador de ARCA."
+        )
+    return _click_servicio_y_obtener_pagina(page, link)
+
+
+def _resolver_pagina_dfe(page, objetivo=None):
+    context = page.context
+    ve = _esperar_apertura_dfe(context)
+    if ve is None:
+        ve = _pagina_dfe_context(context)
+    if ve is None and objetivo is not None:
+        ve = objetivo
+    if ve is None and context.pages:
+        ve = context.pages[-1]
+    if ve is None:
+        ve = page
+    try:
+        ve.bring_to_front()
+    except Exception:
+        pass
+    ve.set_default_timeout(40_000)
+    _esperar_ve_dfe(ve)
+    pausa_humana(1.5, 2.5)
+    return ve
+
+
 def _abrir_dfe(page):
     from cuit_en_arca.automation_playwright import (
         _click_servicio_y_obtener_pagina,
         _esperar_pagina,
         _esperar_post_login,
+        _ir_al_portal_arca,
         _iter_contextos,
-        _locator_buscador_servicios,
     )
 
     pausa_humana(0.8, 1.4)
     _esperar_post_login(page)
     _esperar_pagina(page, timeout=42_000)
 
-    ve = None
-    buscador = None
-    for ctx in _iter_contextos(page):
-        buscador = _locator_buscador_servicios(ctx)
-        if buscador is not None:
-            break
+    objetivo = None
+    errores: list[str] = []
 
-    if buscador is not None:
-        escribir_como_humano(buscador, VE_TERMINO_BUSQUEDA)
-        pausa_humana(1.0, 1.8)
-        res = page.get_by_text(re.compile(r"Domicilio Fiscal Electr", re.I))
-        for i in range(min(res.count(), 8)):
-            try:
-                if res.nth(i).is_visible(timeout=900):
-                    ve = _click_servicio_y_obtener_pagina(page, res.nth(i))
+    def _intentar_desde_portal_actual() -> object | None:
+        nonlocal objetivo
+        objetivo = None
+        try:
+            objetivo = _buscar_dfe_en_portal(page)
+        except AutomatizacionArcaError as exc:
+            errores.append(str(exc))
+            link = _esperar_enlace_dfe(page, intentos=8)
+            if link is not None:
+                try:
+                    objetivo = _click_servicio_y_obtener_pagina(page, link)
+                except Exception as exc2:
+                    errores.append(str(exc2))
+        if objetivo is None:
+            for ctx in _iter_contextos(page):
+                link = _locator_enlace_dfe(ctx)
+                if link is None:
+                    continue
+                try:
+                    objetivo = _click_servicio_y_obtener_pagina(page, link)
                     break
-            except Exception:
-                continue
+                except Exception as exc:
+                    errores.append(str(exc))
+        ve = _resolver_pagina_dfe(page, objetivo)
+        if _url_es_dfe(getattr(ve, "url", "")):
+            return ve
+        return None
 
+    ve = _intentar_desde_portal_actual()
     if ve is None:
-        loc = page.locator("a.accesoPrincipal[title*='Domicilio' i]")
-        if loc.count():
-            try:
-                ve = _click_servicio_y_obtener_pagina(page, loc.first)
-            except Exception:
-                ve = None
+        try:
+            _ir_al_portal_arca(page)
+            ve = _intentar_desde_portal_actual()
+        except Exception as exc:
+            errores.append(str(exc))
 
-    # Elegir la pestaña real de la ventanilla (ve.cloud).
-    for pg in page.context.pages:
-        if "ve.cloud" in (pg.url or ""):
-            ve = pg
-            break
-    if ve is None:
-        ve = page
-
-    ve.set_default_timeout(40_000)
-    try:
-        ve.wait_for_load_state("networkidle", timeout=30_000)
-    except Exception:
-        pass
-    pausa_humana(2.0, 3.2)
-
-    if "ve.cloud" not in (ve.url or ""):
+    if ve is None or not _url_es_dfe(getattr(ve, "url", "")):
+        detalle = errores[-1] if errores else (
+            "la ventanilla no terminó de cargar tras el login (común en servidor web)."
+        )
         raise AutomatizacionArcaError(
-            "No se pudo abrir el Domicilio Fiscal Electrónico desde el portal. "
-            "Verifique que el CUIT tenga el servicio habilitado."
+            "No se pudo abrir el Domicilio Fiscal Electrónico desde el portal "
+            f"({detalle}). Reintentá en unos minutos."
         )
     return ve
 

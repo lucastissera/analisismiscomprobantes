@@ -1,15 +1,4 @@
 {
   "version": 1,
-  "hooks": {
-    "afterFileEdit": [
-      {
-        "command": "powershell -NoProfile -ExecutionPolicy Bypass -File .cursor/hooks/schedule-rebuild.ps1"
-      }
-    ],
-    "stop": [
-      {
-        "command": "powershell -NoProfile -ExecutionPolicy Bypass -File .cursor/hooks/rebuild-portable.ps1"
-      }
-    ]
-  }
+  "hooks": {}
 }
