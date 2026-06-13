@@ -102,16 +102,24 @@ def _escritorio_windows() -> Path | None:
     return None
 
 
-def carpeta_dfe_escritorio(hoy: date | None = None, base_elegida: str | Path | None = None) -> Path:
+def carpeta_dfe_escritorio(
+    hoy: date | None = None,
+    base_elegida: str | Path | None = None,
+    *,
+    nombre_sesion: str | None = None,
+) -> Path:
     """Carpeta ``DFE yyyy-mm-dd HH-MM``."""
     from cuit_en_arca.carpetas_salida import stamp_carpeta_ejecucion
 
-    momento = (
-        datetime.now()
-        if hoy is None
-        else datetime.combine(hoy, datetime.now().time())
-    )
-    nombre = f"DFE {stamp_carpeta_ejecucion(momento)}"
+    if nombre_sesion:
+        nombre = nombre_sesion
+    else:
+        momento = (
+            datetime.now()
+            if hoy is None
+            else datetime.combine(hoy, datetime.now().time())
+        )
+        nombre = f"DFE {stamp_carpeta_ejecucion(momento)}"
     if base_elegida:
         destino = Path(base_elegida) / nombre
         destino.mkdir(parents=True, exist_ok=True)
@@ -1092,13 +1100,17 @@ def ejecutar_dfe_lote(
     carpeta_base: str | Path | None = None,
     job_id: str | None = None,
     modo_ap: bool = False,
+    nombre_carpeta_sesion: str | None = None,
 ) -> Path:
     """Procesa varias filas (CUIT) del DFE y guarda todo en ``DFE yyyy-mm-dd``.
 
     Si ``carpeta_base`` se indica, la carpeta ``DFE yyyy-mm-dd`` se crea allí;
     si no, en el escritorio. Tolerante: un CUIT con error no frena el resto.
     """
-    base = carpeta_dfe_escritorio(base_elegida=carpeta_base)
+    base = carpeta_dfe_escritorio(
+        base_elegida=carpeta_base,
+        nombre_sesion=nombre_carpeta_sesion,
+    )
     total = len(filas)
     _log(on_log, f"Carpeta de destino: {base}")
     resumen_lote: list[dict] = []

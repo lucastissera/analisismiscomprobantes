@@ -32,6 +32,20 @@
       : null;
     if (!handle || !archivos || !archivos.length) return;
 
+    function rutaDestino(rutaRelativa) {
+      var sesion =
+        global.McElegirCarpeta && global.McElegirCarpeta.obtenerSubcarpetaSesion
+          ? global.McElegirCarpeta.obtenerSubcarpetaSesion()
+          : null;
+      if (!sesion) return rutaRelativa;
+      var norm = String(rutaRelativa || "").replace(/\\/g, "/");
+      var pref = String(sesion).replace(/\\/g, "/");
+      if (norm.indexOf(pref + "/") === 0) return norm.slice(pref.length + 1);
+      var partes = norm.split("/").filter(Boolean);
+      if (partes.length && partes[0] === pref) return partes.slice(1).join("/");
+      return norm;
+    }
+
     for (var i = 0; i < archivos.length; i++) {
       var a = archivos[i];
       if (!a || !a.id) continue;
@@ -42,7 +56,9 @@
       });
       if (!resp.ok) continue;
       var blob = await resp.blob();
-      await escribirEnRuta(handle, a.ruta || a.nombre, blob);
+      var destino = rutaDestino(a.ruta || a.nombre);
+      if (!destino) continue;
+      await escribirEnRuta(handle, destino, blob);
       _descargados[k] = true;
     }
   }

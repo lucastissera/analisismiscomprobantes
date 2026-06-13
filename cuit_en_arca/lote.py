@@ -39,16 +39,24 @@ class ResultadoLoteArca:
     carpeta: str | None = None
 
 
-def _carpeta_mis_comprobantes(base: str | Path, hoy: date | None = None) -> Path:
+def _carpeta_mis_comprobantes(
+    base: str | Path,
+    hoy: date | None = None,
+    *,
+    nombre_sesion: str | None = None,
+) -> Path:
     """Carpeta ``Mis Comprobantes yyyy-mm-dd HH-MM`` dentro de ``base``."""
     from cuit_en_arca.carpetas_salida import stamp_carpeta_ejecucion
 
-    momento = (
-        datetime.now()
-        if hoy is None
-        else datetime.combine(hoy, datetime.now().time())
-    )
-    destino = Path(base) / f"Mis Comprobantes {stamp_carpeta_ejecucion(momento)}"
+    if nombre_sesion:
+        destino = Path(base) / nombre_sesion
+    else:
+        momento = (
+            datetime.now()
+            if hoy is None
+            else datetime.combine(hoy, datetime.now().time())
+        )
+        destino = Path(base) / f"Mis Comprobantes {stamp_carpeta_ejecucion(momento)}"
     destino.mkdir(parents=True, exist_ok=True)
     return destino
 
@@ -91,6 +99,7 @@ def ejecutar_lote_arca(
     headless: bool | None = None,
     job_id: str | None = None,
     modo_ap: bool = False,
+    nombre_carpeta_sesion: str | None = None,
 ) -> ResultadoLoteArca:
     _requiere_playwright()
 
@@ -110,7 +119,11 @@ def ejecutar_lote_arca(
 
     # Modo carpeta: se escriben los archivos a disco a medida que se generan,
     # en «Mis Comprobantes yyyy-mm-dd» dentro de la carpeta elegida (sin .rar).
-    carpeta = _carpeta_mis_comprobantes(carpeta_destino) if carpeta_destino else None
+    carpeta = (
+        _carpeta_mis_comprobantes(carpeta_destino, nombre_sesion=nombre_carpeta_sesion)
+        if carpeta_destino
+        else None
+    )
     dir_proc = None
     if carpeta is not None:
         dir_proc = carpeta / SUBCARPETA_PROCESADOS

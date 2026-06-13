@@ -283,6 +283,7 @@
 
       <form id="form-np" method="post" action="{{ url_for('np_descargar') }}" enctype="multipart/form-data" autocomplete="off">
         <input type="hidden" id="np-carpeta-destino" name="carpeta_destino" value="" />
+        <input type="hidden" id="web-carpeta-sesion" name="web_carpeta_sesion" value="" />
         <div class="panel">
           <h2>{{ t('np_import_titulo') }}</h2>
           <p class="help">{{ t('np_import_help')|safe }}</p>
@@ -447,6 +448,8 @@
             noSoportado: I18N.errCarpetaWebApi,
             restringida: I18N.errCarpetaRestringida,
           },
+          sistema: "nuestra_parte",
+          sesionInputId: "web-carpeta-sesion",
         });
 
         function hayDatos() {

@@ -174,6 +174,20 @@ def _es_app_escritorio() -> bool:
     return getattr(sys, "frozen", False)
 
 
+def _nombre_carpeta_web_sesion(prefijo: str) -> str | None:
+    """Nombre de subcarpeta acordado con el navegador (web), p. ej. «Mis Comprobantes 2026-06-12 23-05»."""
+    if _es_app_escritorio():
+        return None
+    raw = (request.form.get("web_carpeta_sesion") or "").strip()
+    if not raw or not raw.startswith(f"{prefijo} "):
+        return None
+    if any(c in raw for c in "/\\") or ".." in raw:
+        return None
+    if len(raw) > 120:
+        return None
+    return raw
+
+
 def _fabricar_entrega(
     job_id: str,
     carpeta_form: str | None,
@@ -948,6 +962,7 @@ def arca_descarga_lote():
                 mapa_imputaciones=mapa_imputaciones,
                 carpeta_destino=carpeta_destino,
                 job_id=job_id,
+                nombre_carpeta_sesion=_nombre_carpeta_web_sesion("Mis Comprobantes"),
             )
             if entrega:
                 entrega.escanear()
@@ -1146,6 +1161,7 @@ def dfe_descargar():
                 on_cuit_fin=_cuit_fin,
                 carpeta_base=carpeta_destino,
                 job_id=job_id,
+                nombre_carpeta_sesion=_nombre_carpeta_web_sesion("DFE"),
             )
             if entrega:
                 entrega.escanear()
@@ -1306,6 +1322,7 @@ def np_descargar():
                 on_cuit_fin=_cuit_fin,
                 carpeta_base=carpeta_destino,
                 job_id=job_id,
+                nombre_carpeta_sesion=_nombre_carpeta_web_sesion("Nuestra Parte"),
             )
             if entrega:
                 entrega.escanear()

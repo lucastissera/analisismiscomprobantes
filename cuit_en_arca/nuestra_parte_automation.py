@@ -548,11 +548,19 @@ def _paso(on_paso, clave: str, estado: str) -> None:
 # --------------------------------------------------------------------------- #
 # Carpeta de destino
 # --------------------------------------------------------------------------- #
-def carpeta_np_base(hoy: date | None = None, base_elegida: str | Path | None = None) -> Path:
+def carpeta_np_base(
+    hoy: date | None = None,
+    base_elegida: str | Path | None = None,
+    *,
+    nombre_sesion: str | None = None,
+) -> Path:
     from cuit_en_arca.dfe_automation import _escritorio_windows
     from cuit_en_arca.carpetas_salida import stamp_carpeta_ejecucion
 
-    nombre = f"Nuestra Parte {stamp_carpeta_ejecucion(datetime.combine(hoy, datetime.now().time()) if hoy else None)}"
+    if nombre_sesion:
+        nombre = nombre_sesion
+    else:
+        nombre = f"Nuestra Parte {stamp_carpeta_ejecucion(datetime.combine(hoy, datetime.now().time()) if hoy else None)}"
     if base_elegida:
         destino = Path(base_elegida) / nombre
         destino.mkdir(parents=True, exist_ok=True)
@@ -1616,9 +1624,13 @@ def ejecutar_nuestra_parte_lote(
     carpeta_base: str | Path | None = None,
     job_id: str | None = None,
     modo_ap: bool = False,
+    nombre_carpeta_sesion: str | None = None,
 ) -> Path:
     """Procesa varias filas (CUIT) de «Nuestra Parte». Tolerante a errores."""
-    base = carpeta_np_base(base_elegida=carpeta_base)
+    base = carpeta_np_base(
+        base_elegida=carpeta_base,
+        nombre_sesion=nombre_carpeta_sesion,
+    )
     total = len(filas)
     _log(on_log, f"Carpeta de destino: {base}")
     resumen_lote: list[dict] = []

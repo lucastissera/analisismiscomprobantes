@@ -983,6 +983,7 @@
 
             <form id="form-arca-lote" method="post" action="/arca-descarga-lote" enctype="multipart/form-data">
               <input type="hidden" id="arca-carpeta-destino" name="carpeta_destino" value="" />
+              <input type="hidden" id="web-carpeta-sesion" name="web_carpeta_sesion" value="" />
               <p><a href="{{ url_for('arca_plantilla') }}" download="Formato Analisis Comprobantes.xlsx">{{ t('arca_import_descargar') }}</a></p>
               <label for="planilla_arca"><strong>{{ t('arca_lote_label_file') }}</strong></label><br />
               <input id="planilla_arca" name="planilla_arca" type="file" accept=".xlsx" />
@@ -2043,6 +2044,8 @@
             noSoportado: I18N.err_carpeta_web_api,
             restringida: I18N.err_carpeta_restringida,
           },
+          sistema: "mis_comprobantes",
+          sesionInputId: "web-carpeta-sesion",
         });
 
         function iconoPaso(estado) {
