@@ -1,4 +1,5 @@
 <div class="barra-superior">
+<script>window.MC_MODO_ESCRITORIO = {{ modo_escritorio|tojson }};</script>
   {% if mostrar_volver | default(true) %}
   <div class="barra-volver">
     <a href="{{ volver_url | default(url_for('index')) }}">&larr; {{ volver_texto | default(t('volver_inicio')) }}</a>

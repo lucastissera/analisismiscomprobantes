@@ -239,6 +239,7 @@ def _inject_ui_flags():
     return {
         "mostrar_cuit_arca_ui": _mostrar_ui_cuit_arca(),
         "ejecutable_escritorio_frozen": getattr(sys, "frozen", False),
+        "modo_escritorio": getattr(sys, "frozen", False),
     }
 
 

@@ -2012,6 +2012,7 @@
           labelId: "arca-carpeta-label",
           btnId: "arca-btn-elegir-carpeta",
           titulo: I18N.carpeta_elegir_titulo || "Elegir carpeta de descarga",
+          webHint: I18N.carpeta_modo_web || "",
           onCancel: function () {
             if (resultado) {
               resultado.innerHTML =
@@ -2213,7 +2214,7 @@
           if (btn) btn.disabled = true;
           McElegirCarpeta.resolver({ api: carpetaApi })
             .then(function (ruta) {
-              if (!ruta) {
+              if (McElegirCarpeta.requiereCarpeta(ruta)) {
                 if (btn) btn.disabled = false;
                 if (resultado) {
                   resultado.innerHTML =

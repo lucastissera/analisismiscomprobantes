@@ -361,6 +361,7 @@
         working: {{ t('np_working')|tojson }},
         quitar: {{ t('np_manual_quitar')|tojson }},
         carpetaTitulo: {{ t('carpeta_elegir_titulo')|tojson }},
+        carpetaModoWeb: {{ t('carpeta_modo_web')|tojson }},
         carpetaCancelada: {{ t('carpeta_cancelada')|tojson }},
         fallosTitulo: {{ t('fallos_detalle_titulo')|tojson }},
         fallosArchivo: {{ t('fallos_ver_archivo')|tojson }},
@@ -420,6 +421,7 @@
           labelId: "np-carpeta-label",
           btnId: "np-btn-elegir-carpeta",
           titulo: I18N.carpetaTitulo,
+          webHint: I18N.carpetaModoWeb || "",
           onCancel: function () {
             errBox.style.display = "block";
             errBox.textContent = I18N.carpetaCancelada || "No se eligió carpeta.";
@@ -553,7 +555,7 @@
           btn.textContent = I18N.working;
           McElegirCarpeta.resolver({ api: carpetaApi })
             .then(function (ruta) {
-              if (!ruta) {
+              if (McElegirCarpeta.requiereCarpeta(ruta)) {
                 btn.disabled = false;
                 btn.textContent = "{{ t('np_submit') }}";
                 errBox.style.display = "block";

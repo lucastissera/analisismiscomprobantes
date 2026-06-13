@@ -238,6 +238,7 @@
       var CONFIG = {{ (config or {})|tojson }};
       var I18N = {
         carpetaTitulo: {{ t('carpeta_elegir_titulo')|tojson }},
+        carpetaModoWeb: {{ t('carpeta_modo_web')|tojson }},
         carpetaCancelada: {{ t('carpeta_cancelada')|tojson }},
         errorGuardar: {{ t('ap_err_guardar')|tojson }},
         sinSistema: {{ t('ap_err_sin_sistema')|tojson }},
@@ -356,6 +357,7 @@
           labelId: "carpeta-label",
           btnId: "btn-elegir-carpeta",
           titulo: I18N.carpetaTitulo,
+          webHint: I18N.carpetaModoWeb || "",
           onCancel: function () {
             errBox.textContent = I18N.carpetaCancelada;
             errBox.style.display = "block";
@@ -399,7 +401,7 @@
           btn.disabled = true;
           McElegirCarpeta.resolver({ api: carpetaApi })
             .then(function (ruta) {
-              if (!ruta) {
+              if (McElegirCarpeta.requiereCarpeta(ruta)) {
                 btn.disabled = false;
                 errBox.textContent = I18N.carpetaCancelada;
                 errBox.style.display = "block";
