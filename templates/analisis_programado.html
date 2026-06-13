@@ -203,6 +203,9 @@
 
         <div class="carpeta-row">
           <p class="help" style="margin:0">{{ t('ap_carpeta_destino') }}: <code id="carpeta-label" class="ruta">—</code></p>
+          {% if not modo_escritorio %}
+          <p class="help" style="margin:0.35rem 0 0">{{ t('carpeta_modo_web') }}</p>
+          {% endif %}
           <button type="button" class="btn-sec" id="btn-elegir-carpeta">{{ t('elegir_carpeta_btn') }}</button>
           <button type="button" class="btn-sec btn-cancelar-descarga" id="ap-btn-cancelar">{{ t('btn_cancelar_descarga') }}</button>
         </div>
@@ -241,6 +244,7 @@
         carpetaTitulo: {{ t('carpeta_elegir_titulo')|tojson }},
         carpetaModoWeb: {{ t('carpeta_modo_web')|tojson }},
         errCarpetaWebApi: {{ t('err_carpeta_web_api')|tojson }},
+        errCarpetaRestringida: {{ t('err_carpeta_restringida')|tojson }},
         carpetaCancelada: {{ t('carpeta_cancelada')|tojson }},
         errorGuardar: {{ t('ap_err_guardar')|tojson }},
         sinSistema: {{ t('ap_err_sin_sistema')|tojson }},
@@ -364,12 +368,20 @@
             errBox.textContent = I18N.carpetaCancelada;
             errBox.style.display = "block";
           },
-          onError: function (err) {
-            errBox.textContent = I18N.carpetaCancelada;
-            if (err && err.message === "picker_web_no_soportado") {
-              errBox.textContent = I18N.errCarpetaWebApi || I18N.carpetaCancelada;
-            }
+          onError: function (err, msg) {
+            errBox.textContent =
+              msg ||
+              McElegirCarpeta.mensajeError(err, {
+                cancelada: I18N.carpetaCancelada,
+                noSoportado: I18N.errCarpetaWebApi,
+                restringida: I18N.errCarpetaRestringida,
+              });
             errBox.style.display = "block";
+          },
+          textos: {
+            cancelada: I18N.carpetaCancelada,
+            noSoportado: I18N.errCarpetaWebApi,
+            restringida: I18N.errCarpetaRestringida,
           },
         });
 

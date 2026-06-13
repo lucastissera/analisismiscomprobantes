@@ -322,6 +322,9 @@
 
         <div class="carpeta-row">
           <p class="help" style="margin:0">{{ t('carpeta_destino_label') }}: <code id="np-carpeta-label" class="ruta">—</code></p>
+          {% if not modo_escritorio %}
+          <p class="help" style="margin:0.35rem 0 0">{{ t('carpeta_modo_web') }}</p>
+          {% endif %}
           <button type="button" class="btn-sec" id="np-btn-elegir-carpeta">{{ t('elegir_carpeta_btn') }}</button>
           <button type="button" class="btn-sec btn-cancelar-descarga" id="np-btn-cancelar">{{ t('btn_cancelar_descarga') }}</button>
         </div>
@@ -364,6 +367,7 @@
         carpetaTitulo: {{ t('carpeta_elegir_titulo')|tojson }},
         carpetaModoWeb: {{ t('carpeta_modo_web')|tojson }},
         errCarpetaWebApi: {{ t('err_carpeta_web_api')|tojson }},
+        errCarpetaRestringida: {{ t('err_carpeta_restringida')|tojson }},
         carpetaCancelada: {{ t('carpeta_cancelada')|tojson }},
         fallosTitulo: {{ t('fallos_detalle_titulo')|tojson }},
         fallosArchivo: {{ t('fallos_ver_archivo')|tojson }},
@@ -428,13 +432,20 @@
             errBox.style.display = "block";
             errBox.textContent = I18N.carpetaCancelada || "No se eligió carpeta.";
           },
-          onError: function (err) {
+          onError: function (err, msg) {
             errBox.style.display = "block";
-            var msg = I18N.carpetaCancelada || "No se eligió carpeta.";
-            if (err && err.message === "picker_web_no_soportado") {
-              msg = I18N.errCarpetaWebApi || msg;
-            }
-            errBox.textContent = msg;
+            errBox.textContent =
+              msg ||
+              McElegirCarpeta.mensajeError(err, {
+                cancelada: I18N.carpetaCancelada,
+                noSoportado: I18N.errCarpetaWebApi,
+                restringida: I18N.errCarpetaRestringida,
+              });
+          },
+          textos: {
+            cancelada: I18N.carpetaCancelada,
+            noSoportado: I18N.errCarpetaWebApi,
+            restringida: I18N.errCarpetaRestringida,
           },
         });
 

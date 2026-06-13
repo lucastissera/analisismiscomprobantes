@@ -1078,6 +1078,9 @@
                   {{ t('carpeta_destino_label') }}:
                   <code id="arca-carpeta-label" class="ruta" style="word-break:break-all">—</code>
                 </p>
+                {% if not modo_escritorio %}
+                <p class="arca-manual-help" style="margin:0.35rem 0 0">{{ t('carpeta_modo_web') }}</p>
+                {% endif %}
                 <button type="button" class="btn-carpeta" id="arca-btn-elegir-carpeta">{{ t('elegir_carpeta_btn') }}</button>
                 <button type="button" class="btn-sec btn-cancelar-descarga" id="arca-btn-cancelar">{{ t('btn_cancelar_descarga') }}</button>
               </div>
@@ -2022,14 +2025,23 @@
                 "</p>";
             }
           },
-          onError: function (err) {
+          onError: function (err, msg) {
             if (resultado) {
-              var msg = I18N.carpetaCancelada || "No se eligió carpeta.";
-              if (err && err.message === "picker_web_no_soportado") {
-                msg = I18N.err_carpeta_web_api || msg;
-              }
-              resultado.innerHTML = '<p class="mensaje-error">' + msg + "</p>";
+              resultado.innerHTML =
+                '<p class="mensaje-error">' +
+                (msg ||
+                  McElegirCarpeta.mensajeError(err, {
+                    cancelada: I18N.carpeta_cancelada,
+                    noSoportado: I18N.err_carpeta_web_api,
+                    restringida: I18N.err_carpeta_restringida,
+                  })) +
+                "</p>";
             }
+          },
+          textos: {
+            cancelada: I18N.carpeta_cancelada,
+            noSoportado: I18N.err_carpeta_web_api,
+            restringida: I18N.err_carpeta_restringida,
           },
         });
 
